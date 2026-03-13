@@ -1,0 +1,68 @@
+# HTTP Handler — a backend service demonstrating effects, error handling, and middleware
+# Demonstrates lightweight intent for most functions, @strict for auth-critical paths
+
+module http_handler
+
+exports:
+  Config
+  ServerError
+  serve
+  route
+  authenticate
+  handle_request
+
+use std/http {Request, Response, Method, Handler, Route, Server}
+use std/time {Duration}
+
+intent type Config
+  does: "server configuration with sensible defaults"
+  fields:
+    port: Int
+    host: String
+    tls: Option<TlsConfig>
+    max_connections: Int
+    request_timeout: Duration
+
+intent type ServerError
+  variants:
+    PortInUse: "the specified port is already bound"
+    PermissionDenied: "insufficient permissions to bind port"
+    TlsError(String): "TLS configuration is invalid"
+
+intent type AuthError
+  variants:
+    InvalidCreds: "invalid username or password"
+    Locked: "account is locked after too many failed attempts"
+    Expired: "session token has expired"
+
+intent fn serve(config: Config, handler: Handler) -> Result<Server, ServerError>
+  does: "starts an HTTP server on config.port, dispatches requests to handler"
+  fails: PortInUse, PermissionDenied, TlsError
+  effects: [Net.listen, Log.write]
+
+intent fn route(method: Method, pattern: String, handler: Handler) -> Route
+  does: "creates a route matching method and path pattern to a handler"
+  effects: [pure]
+
+intent fn authenticate(creds: Credentials) -> Result<Session, AuthError> @strict
+  requires:
+    creds.username.len > 0
+    creds.password.len > 0
+  ensures:
+    ok => result.user_id > 0
+    ok => result.expires_at > Clock.now()
+    err(Locked) => Db.failed_attempts(creds.username) >= 5
+  errors:
+    InvalidCreds: "invalid username or password"
+    Locked: "account locked after 5+ failed attempts"
+    Expired: "session has expired"
+  effects: [Db.read, Db.write, Crypto.verify, Log.write]
+  panics: never
+
+intent fn handle_request(req: Request) -> Response
+  does: "routes and processes an incoming HTTP request with logging and error handling"
+  effects: [Db.read, Db.write, Log.write, Http.send]
+  edge_cases:
+    - "returns 404 for unmatched routes"
+    - "returns 500 with safe error message for internal failures"
+    - "logs request duration for observability"

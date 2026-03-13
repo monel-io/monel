@@ -1,0 +1,124 @@
+# Terminal — raw terminal I/O demonstrating systems capabilities
+# Shows unsafe effects, PTY handling, state machines, and layout intent
+
+module terminal
+
+exports:
+  Terminal
+  TerminalConfig
+  TerminalError
+  Cell
+  CursorStyle
+
+use std/terminal {Pty, RawMode, AnsiParser}
+use std/render {Surface, Renderer}
+
+intent type TerminalConfig
+  does: "configuration for terminal initialization"
+  fields:
+    rows: Int
+    cols: Int
+    scrollback: Int
+    shell: String
+
+intent type Cell
+  does: "a single character cell in the terminal grid"
+  fields:
+    char: Char
+    fg: Color
+    bg: Color
+    bold: Bool
+    italic: Bool
+    underline: Bool
+
+intent type CursorStyle
+  variants:
+    Block
+    Bar
+    Underline
+
+intent type TerminalError
+  variants:
+    PtyFailed: "could not allocate PTY"
+    IoError(String): "I/O operation failed"
+    InvalidSize: "terminal dimensions are invalid"
+
+intent type Terminal
+  does: "a terminal emulator managing a PTY, character grid, and cursor"
+  invariant:
+    self.cursor_row < self.rows
+    self.cursor_col < self.cols
+
+intent state_machine TerminalState
+  does: "terminal lifecycle from initialization to shutdown"
+  states: [Uninitialized, Running, Suspended, ShuttingDown, Closed]
+  transitions:
+    Uninitialized --init()-->       Running
+    Running       --suspend()-->    Suspended
+    Running       --shutdown()-->   ShuttingDown
+    Suspended     --resume()-->     Running
+    Suspended     --shutdown()-->   ShuttingDown
+    ShuttingDown  --on_closed()-->  Closed
+  initial: Uninitialized
+  terminal: [Closed]
+
+intent layout TerminalView
+  does: "main terminal layout with optional status bar"
+  regions:
+    terminal_grid: fill remaining, scrollable
+    status_bar: height 1 row, fixed, bottom
+  focus_order: [terminal_grid]
+  responsive:
+    width < 40 cols -> hide status_bar
+
+intent fn init(config: TerminalConfig) -> Result<Terminal, TerminalError> @strict
+  requires:
+    config.rows > 0
+    config.cols > 0
+    config.scrollback >= 0
+  ensures:
+    ok => result.rows == config.rows
+    ok => result.cols == config.cols
+    ok => result.cursor_row == 0
+    ok => result.cursor_col == 0
+  errors:
+    PtyFailed: "PTY allocation failed"
+    InvalidSize: "rows or cols must be positive"
+  effects: [unsafe, Fs.read, Fs.write]
+  panics: never
+
+intent fn write_input(self: mut Terminal, data: Array<Byte>) -> Result<(), TerminalError>
+  does: "writes user input bytes to the PTY"
+  fails: IoError
+  effects: [unsafe, Fs.write]
+
+intent fn read_output(self: mut Terminal) -> Result<Array<Byte>, TerminalError>
+  does: "reads output bytes from the PTY"
+  fails: IoError
+  effects: [unsafe, Fs.read]
+
+intent fn process_output(self: mut Terminal, data: Array<Byte>) -> Unit
+  does: "parses ANSI escape sequences and updates the character grid"
+  effects: [pure]
+  edge_cases:
+    - "handles partial escape sequences spanning multiple reads"
+    - "scrolls when cursor moves past last row"
+
+intent fn render(self: Terminal, surface: mut Surface) -> Unit
+  does: "renders the current terminal grid to a surface for display"
+  effects: [pure]
+
+intent fn resize(self: mut Terminal, rows: Int, cols: Int) -> Result<(), TerminalError> @strict
+  requires:
+    rows > 0
+    cols > 0
+  ensures:
+    ok => self.rows == rows
+    ok => self.cols == cols
+  errors:
+    IoError(String): "failed to send SIGWINCH to child process"
+  effects: [unsafe, Signal]
+
+intent fn shutdown(self: mut Terminal) -> Unit
+  does: "gracefully shuts down the PTY and cleans up resources"
+  effects: [unsafe, Fs.write, Signal]
