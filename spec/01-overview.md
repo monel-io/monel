@@ -64,6 +64,25 @@ This separation is not a convention or a linter rule. It is a first-class archit
 
 The result: humans review intent (concise, declarative, readable) and parity reports (compiler-generated verification summaries) instead of tracing through generated implementation code.
 
+### 1.4.1 Relationship to Spec-Driven Development
+
+Monel belongs to the **Spec-Driven Development (SDD)** movement — the emerging practice of writing specifications before code when working with AI coding assistants. Tools like OpenSpec, GitHub spec-kit, and similar frameworks have demonstrated strong demand for this workflow (OpenSpec alone reached 28k+ GitHub stars within months of launch).
+
+These tools add a spec layer *on top of* existing languages: markdown files that AI agents are instructed to follow. They validate the problem — developers want spec-first AI workflows — but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. There is no mechanism to detect the divergence.
+
+Monel is what happens when spec-driven development moves from tooling convention to language primitive. The intent layer is not a markdown file an agent is asked to read — it is a compiler-parsed artifact that the build system verifies against the implementation. The difference between a document and a specification is enforcement.
+
+| | Convention-based SDD (OpenSpec, spec-kit) | Compiler-enforced SDD (Monel) |
+|---|---|---|
+| Spec format | Markdown / YAML (natural language) | Typed intent syntax (compiler-parsed) |
+| Enforcement | Agent is told to follow the spec | Code cannot build unless it matches intent |
+| Drift detection | Manual review | `monel check` (automatic, deterministic) |
+| Granularity | Feature / module | Function |
+| Verification | None (trust the agent) | Structural parity + optional semantic parity |
+| Works with existing languages | Yes | No — Monel is the language |
+
+Convention-based SDD tools are Monel's natural on-ramp: teams already using spec-first workflows are the ideal early adopters.
+
 ---
 
 ## 1.5 Target Domain
