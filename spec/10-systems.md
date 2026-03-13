@@ -10,6 +10,29 @@ The central design principle: **unsafe code is isolated, documented, and auditab
 
 `unsafe` is a first-class effect in Monel's effect system. Any operation that bypasses the language's safety guarantees — raw pointer access, FFI calls, inline assembly, unchecked casts — requires the `unsafe` effect.
 
+```mermaid
+graph LR
+    subgraph "Intent Layer"
+        I["intent fn init_buffer(...)<br/>effects: [unsafe, Fs.write]<br/><i>safety: 'alloc is bounded by size'</i>"]
+    end
+
+    subgraph "Implementation Layer"
+        U["unsafe block<br/><i>discharges effect locally</i>"]
+        S["safe code<br/><i>no unsafe propagation</i>"]
+        U --> S
+    end
+
+    subgraph "Parity Verification"
+        P1["Stage 2: effect declared ✓"]
+        P2["Stage 3: safety doc present ✓"]
+        P3["Hot-swap: confirm before reload ⚠️"]
+    end
+
+    I --> P1
+    U --> P2
+    S --> P3
+```
+
 ### 10.1.1 Declaration
 
 Functions that are entirely unsafe declare the `unsafe` effect:

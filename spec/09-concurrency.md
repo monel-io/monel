@@ -74,6 +74,28 @@ The order is `try await expr` -- first await the future, then propagate the erro
 
 All concurrency in Monel is structured. Tasks are launched within scopes, and a scope does not complete until all its child tasks complete. There is no way to launch a detached task that outlives its parent.
 
+```mermaid
+graph TD
+    subgraph "outer scope"
+        A["scope |outer|"] --> B["spawn task 1"]
+        A --> C["spawn task 2"]
+        A --> D["spawn task 3"]
+
+        subgraph "inner scope"
+            B --> B1["subtask 1a"]
+            B --> B2["subtask 1b"]
+            B1 --> BJ["inner scope completes<br/><i>all subtasks done</i>"]
+            B2 --> BJ
+        end
+
+        BJ --> J
+        C --> J["outer scope completes<br/><i>all tasks done</i>"]
+        D --> J
+    end
+
+    J --> R["return result"]
+```
+
 ### 9.3.1 Task Scopes
 
 The `scope` block creates a concurrency scope:

@@ -1,0 +1,7 @@
+[package]
+name = "monel-cli"
+version = "0.1.0-dev"
+edition.workspace = true
+
+[dependencies]
+monel-core = { path = "../monel-core" }

@@ -1,0 +1,7 @@
+[package]
+name = "monel-core"
+version = "0.1.0-dev"
+edition.workspace = true
+
+[dependencies]
+monel-intent-parser = { path = "../monel-intent-parser" }

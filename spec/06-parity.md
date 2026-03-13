@@ -8,6 +8,28 @@ This chapter specifies Monel's parity system — the compiler's mechanism for ve
 
 Parity checking answers the question: *does the implementation match the intent?*
 
+```mermaid
+graph LR
+    subgraph Intent[".mn.intent"]
+        IF["intent fn authenticate(...)"]
+        ID["does: 'verify credentials'"]
+        IE["effects: [Db.read, Crypto.verify]"]
+        IER["fails: InvalidCreds, Locked"]
+    end
+
+    subgraph Impl[".mn"]
+        MF["fn authenticate @intent('authenticate')"]
+        MB["body: ...actual code..."]
+    end
+
+    IF -->|"Stage 2:<br/>signature match"| MF
+    IE -->|"Stage 3:<br/>effect subset"| MB
+    IER -->|"Stage 3:<br/>error exhaustiveness"| MB
+    ID -->|"Stage 4:<br/>semantic match (LLM)"| MB
+
+    style ID stroke-dasharray: 5 5
+```
+
 This question decomposes into two levels:
 
 1. **Structural parity** — Do the shapes match? Are the right functions implemented with the right signatures, types, effects, and error variants? This is a deterministic, compiler-enforced check.
@@ -533,6 +555,24 @@ When no `[llm]` section is configured, Stage 4 is skipped silently. The compiler
 ## 6.7 Diagrammatic Parity
 
 Intent files can declare state machines. The parity checker verifies that implementation code paths correspond to the declared transitions.
+
+For example, the `OrderLifecycle` state machine below is declared in intent and verified against the implementation's enum types and transition functions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created
+    Created --> Validated: validate_order
+    Created --> Cancelled: cancel_order
+    Validated --> Paid: charge_payment
+    Validated --> Cancelled: cancel_order
+    Paid --> Shipped: ship_order
+    Paid --> Cancelled: cancel_and_refund
+    Shipped --> Delivered: confirm_delivery
+    Delivered --> [*]
+    Cancelled --> [*]
+```
+
+The parity checker verifies: (1) every declared state exists as an enum variant, (2) every transition has a corresponding function, and (3) no undeclared transitions exist in the implementation.
 
 ### 6.7.1 State Machine Intent
 

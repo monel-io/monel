@@ -1,0 +1,88 @@
+# Stack — Implementation
+
+The implementation of a generic, bounded stack.
+
+```monel
+use std/collections {Array}
+
+type Stack<T>
+  data: Array<T>
+  len: Int
+  capacity: Int
+
+type StackError
+  | Overflow
+  | Underflow
+
+fn new @intent("new")
+  params: capacity: Int
+  returns: Stack<T>
+  effects: [pure]
+  body:
+    Stack
+      data: Array.with_capacity(capacity)
+      len: 0
+      capacity: capacity
+
+fn push @intent("push")
+  params: self: mut Stack<T>, val: T
+  returns: Result<(), StackError>
+  effects: [pure]
+  body:
+    if self.len == self.capacity
+      Err(StackError.Overflow)
+    else
+      self.data.set(self.len, val)
+      self.len = self.len + 1
+      Ok(())
+
+fn pop @intent("pop")
+  params: self: mut Stack<T>
+  returns: Result<T, StackError>
+  effects: [pure]
+  body:
+    if self.len == 0
+      Err(StackError.Underflow)
+    else
+      self.len = self.len - 1
+      let val = self.data.get(self.len)
+      Ok(val)
+
+fn peek @intent("peek")
+  params: self: Stack<T>
+  returns: Option<T>
+  effects: [pure]
+  body:
+    if self.len == 0
+      None
+    else
+      Some(self.data.get(self.len - 1))
+
+fn len @intent("len")
+  params: self: Stack<T>
+  returns: Int
+  effects: [pure]
+  body:
+    self.len
+
+fn is_empty @intent("is_empty")
+  params: self: Stack<T>
+  returns: Bool
+  effects: [pure]
+  body:
+    self.len == 0
+
+fn is_full @intent("is_full")
+  params: self: Stack<T>
+  returns: Bool
+  effects: [pure]
+  body:
+    self.len == self.capacity
+
+fn clear @intent("clear")
+  params: self: mut Stack<T>
+  returns: Unit
+  effects: [pure]
+  body:
+    self.len = 0
+```

@@ -30,6 +30,7 @@ my-project/
   .monel/
     index.json               # auto-generated: query index
     cache/                   # auto-generated: compilation cache
+    tools/                   # auto-generated: project-scoped tool binaries
   src/
     main.mn.intent           # entry point intent
     main.mn                  # entry point implementation
@@ -235,6 +236,13 @@ local-lib = { path = "../local-lib" }
 test-utils = "0.1.0"
 bench = "1.0.0"
 
+[tools]
+protoc = "25.1"
+sqlx-cli = { version = "0.7", features = ["postgres"] }
+
+[tools.dev]
+cargo-flamegraph = "0.6"
+
 [targets]
 default = "native"
 wasm = { features = ["no-threads"] }
@@ -284,7 +292,119 @@ Version strings follow semver. The version requirement syntax supports:
 - `"~1.2.0"` -- approximately 1.2.0 (>=1.2.0, <1.3.0)
 - `">=1.0, <2.0"` -- range
 
-### 7.7.4 `[targets]` Section
+### 7.7.4 `[tools]` and `[tools.dev]` Sections
+
+The `[tools]` section declares project-level CLI tool dependencies -- executable binaries that the project's workflow requires (code generators, database migrators, linters, etc.). The `[tools.dev]` subsection declares tools needed only during development (profilers, benchmarking harnesses, etc.).
+
+**Design rationale.** Cargo has no way to declare dev tool dependencies. Go resorts to a `tools.go` blank-import hack. npm and uv handle this well. Monel makes tool dependencies first-class: they are declared in the manifest, pinned in the lockfile, and installed to a project-local directory.
+
+#### Manifest Syntax
+
+```toml
+[tools]
+protoc = "25.1"
+sqlx-cli = { version = "0.7", features = ["postgres"] }
+flatc = { version = "24.3", source = "github:google/flatbuffers" }
+
+[tools.dev]
+cargo-flamegraph = "0.6"
+tokei = "12.1"
+```
+
+Version strings follow the same semver syntax as `[dependencies]` (see Section 7.7.3). Each tool entry may use either the short form (version string) or the table form with additional fields:
+
+| Field       | Required | Description                                          |
+|-------------|----------|------------------------------------------------------|
+| `version`   | Yes      | Semver version requirement                           |
+| `source`    | No       | Registry, Git repository, or URL for the tool binary |
+| `features`  | No       | Feature flags to enable when compiling from source   |
+| `artifact`  | No       | Artifact name if it differs from the tool name       |
+
+#### EBNF Grammar Fragment
+
+```ebnf
+tools_section      = "[tools]" , newline , { tool_entry , newline } ;
+tools_dev_section  = "[tools.dev]" , newline , { tool_entry , newline } ;
+
+tool_entry         = tool_name , "=" , ( version_string | tool_table ) ;
+tool_name          = identifier ;
+version_string     = quoted_string ;   (* semver requirement, same as dep versions *)
+
+tool_table         = "{" , tool_field , { "," , tool_field } , "}" ;
+tool_field         = version_field | source_field | features_field | artifact_field ;
+version_field      = "version" , "=" , quoted_string ;
+source_field       = "source" , "=" , quoted_string ;
+features_field     = "features" , "=" , "[" , quoted_string , { "," , quoted_string } , "]" ;
+artifact_field     = "artifact" , "=" , quoted_string ;
+```
+
+#### Installation and Scoping
+
+Tools are project-scoped. `monel sync` installs them into `.monel/tools/` relative to the project root -- never into a global location. This guarantees that different projects can pin different versions of the same tool without conflict.
+
+```
+.monel/
+  tools/
+    protoc           # v25.1, project-pinned
+    sqlx-cli         # v0.7
+    cargo-flamegraph # v0.6 (dev-only)
+```
+
+The `.monel/tools/` directory SHOULD be added to `.gitignore`. It is fully reproducible from `monel.lock`.
+
+#### Binary Resolution Strategy
+
+When installing a tool, `monel sync` uses the following strategy:
+
+1. **Check cache.** If the exact version is already present in the global binary cache (`~/.monel/cache/tools/`), hardlink or copy it.
+2. **Download prebuilt binary.** Query the registry or `source` for a prebuilt binary matching the host platform and architecture. This is the fast path.
+3. **Compile from source.** If no prebuilt binary is available, fetch the source and compile it. Feature flags from the manifest are passed to the build.
+
+Prebuilt binaries are verified against SHA-256 checksums recorded in the registry.
+
+#### `monel sync`
+
+The `monel sync` command is the single entry point for making the project ready to build and run:
+
+```bash
+monel sync              # install deps + dev-deps + tools + dev-tools
+monel sync --prod       # install deps only (no dev-deps, no tools)
+```
+
+Behavior:
+- Resolves and installs library dependencies from `[dependencies]`.
+- Resolves and installs dev dependencies from `[dev-dependencies]`.
+- Resolves and installs tool binaries from `[tools]` and `[tools.dev]`.
+- Updates `monel.lock` if the lock file is absent or stale.
+- **Idempotent.** Running `monel sync` when everything is already installed is a fast no-op (sub-100ms). It compares lock file hashes against installed artifacts and skips work that is already done.
+
+The `--prod` flag restricts installation to `[dependencies]` only. Dev dependencies, tools, and dev tools are skipped. This is intended for production container builds and CI release pipelines.
+
+#### `monel run <tool>`
+
+Invokes a tool using the project-pinned version from `.monel/tools/`:
+
+```bash
+monel run protoc --proto_path=proto/ --monel_out=src/generated/ schema.proto
+monel run sqlx-cli migrate run
+monel run cargo-flamegraph -- --bin my-terminal
+```
+
+`monel run <tool>` prepends `.monel/tools/` to `PATH` so that the tool resolves to the project-pinned version. Arguments after the tool name are forwarded verbatim.
+
+If the tool is not installed, `monel run` prints an error directing the user to run `monel sync`.
+
+#### Lockfile Coverage
+
+`monel.lock` records the resolved versions and integrity hashes for everything:
+
+- Library dependencies (`[dependencies]`).
+- Dev dependencies (`[dev-dependencies]`).
+- Tool binaries (`[tools]` and `[tools.dev]`).
+
+A single lockfile ensures fully reproducible builds and environments. See Section 7.11.1 for the lockfile lifecycle.
+
+### 7.7.5 `[targets]` Section
 
 Monel supports multiple compilation targets:
 
@@ -307,7 +427,7 @@ features = ["no-threads"]
 opt-level = "size"       # optimize for size
 ```
 
-### 7.7.5 `[llm]` Section
+### 7.7.6 `[llm]` Section
 
 The LLM section is optional. When absent, the compiler operates in offline mode -- all compilation stages except Stage 4 (semantic parity checking) function normally.
 
@@ -545,7 +665,7 @@ Monel uses a SAT-solver-based dependency resolver (similar to Cargo/pub). The re
 3. Finds a compatible version set satisfying all constraints.
 4. Writes the resolved versions to `monel.lock`.
 
-The `monel.lock` file MUST be committed to version control for applications. Libraries SHOULD NOT commit `monel.lock`.
+The `monel.lock` file covers library dependencies, dev dependencies, and tool binaries (see Section 7.7.4). It MUST be committed to version control for applications. Libraries SHOULD NOT commit `monel.lock`.
 
 ### 7.11.2 Automatic Semver from Intent Diffs
 

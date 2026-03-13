@@ -399,6 +399,49 @@ stdio_is_effect = true  # makes println require Fs.write
 
 Certain effects imply others. The complete implication graph:
 
+```mermaid
+graph TD
+    subgraph Database
+        DbW["Db.write"] --> DbR["Db.read"]
+        DbStar["Db.*"] --> DbW
+        DbStar --> DbR
+    end
+
+    subgraph Filesystem
+        FsW["Fs.write"] --> FsR["Fs.read"]
+        FsStar["Fs.*"] --> FsW
+        FsStar --> FsR
+    end
+
+    subgraph Network
+        HttpS["Http.send"] --> NetC["Net.connect"]
+        HttpS --> NetS["Net.send"]
+        HttpR["Http.receive"] --> NetRcv["Net.receive"]
+        NetStar["Net.*"] --> NetC
+        NetStar --> NetL["Net.listen"]
+        NetStar --> NetS
+        NetStar --> NetRcv
+    end
+
+    subgraph Crypto
+        CryptoStar["Crypto.*"] --> CH["Crypto.hash"]
+        CryptoStar --> CE["Crypto.encrypt"]
+        CryptoStar --> CD["Crypto.decrypt"]
+        CryptoStar --> CS["Crypto.sign"]
+        CryptoStar --> CV["Crypto.verify"]
+        CryptoStar --> CR["Crypto.random"]
+    end
+
+    subgraph Auth
+        AuthStar["Auth.*"] --> AC["Auth.check"]
+        AuthStar --> AG["Auth.grant"]
+        AuthStar --> AR["Auth.revoke"]
+        AuthStar --> AS["Auth.session"]
+    end
+```
+
+Expressed as rules:
+
 ```
 Db.write     implies  Db.read
 Fs.write     implies  Fs.read

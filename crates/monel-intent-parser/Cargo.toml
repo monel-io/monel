@@ -1,0 +1,4 @@
+[package]
+name = "monel-intent-parser"
+version = "0.1.0-dev"
+edition.workspace = true

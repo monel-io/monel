@@ -1,0 +1,71 @@
+# Stack — Intent
+
+A generic, bounded stack data structure. Demonstrates both lightweight and `@strict` intent tiers.
+
+```monel
+# Stack — a generic, bounded stack data structure
+# Demonstrates both lightweight and @strict intent tiers
+
+module stack
+
+exports:
+  Stack<T>
+  StackError
+
+intent type Stack<T>
+  does: "a bounded, generic stack using a contiguous buffer"
+  invariant: self.len <= self.capacity
+
+intent type StackError
+  variants:
+    Overflow: "push attempted on a full stack"
+    Underflow: "pop attempted on an empty stack"
+
+intent fn new(capacity: Int) -> Stack<T> @strict
+  requires: capacity > 0
+  ensures:
+    result.len == 0
+    result.capacity == capacity
+  effects: [pure]
+
+intent fn push(self: mut Stack<T>, val: T) -> Result<(), StackError> @strict
+  requires: true
+  ensures:
+    ok => self.len == old(self.len) + 1
+    ok => self.peek() == Some(val)
+    err => self.unchanged()
+  errors:
+    Overflow: "stack is at capacity"
+  effects: [pure]
+
+intent fn pop(self: mut Stack<T>) -> Result<T, StackError> @strict
+  requires: true
+  ensures:
+    ok => self.len == old(self.len) - 1
+    err => self.unchanged()
+  errors:
+    Underflow: "stack is empty"
+  effects: [pure]
+
+intent fn peek(self: Stack<T>) -> Option<T>
+  does: "returns the top element without removing it"
+  effects: [pure]
+
+intent fn len(self: Stack<T>) -> Int
+  does: "returns the number of elements in the stack"
+  effects: [pure]
+
+intent fn is_empty(self: Stack<T>) -> Bool
+  does: "returns true if the stack contains no elements"
+  effects: [pure]
+
+intent fn is_full(self: Stack<T>) -> Bool
+  does: "returns true if the stack is at capacity"
+  effects: [pure]
+
+intent fn clear(self: mut Stack<T>) -> Unit @strict
+  ensures:
+    self.len == 0
+    self.capacity == old(self.capacity)
+  effects: [pure]
+```

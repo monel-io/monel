@@ -10,6 +10,35 @@ The design principle: **every question an AI tool would answer by grepping becom
 
 The `monel query` command family exposes the compiler's semantic understanding as a CLI. Every subcommand returns structured data suitable for both human consumption and LLM context windows.
 
+```mermaid
+graph TD
+    Q["monel query"]
+
+    subgraph Understanding["Understanding"]
+        QS["surface<br/><i>module overview</i>"]
+        QF["fn<br/><i>function details</i>"]
+        QT["type<br/><i>type details</i>"]
+        QE["effects<br/><i>effect analysis</i>"]
+    end
+
+    subgraph Navigation["Navigation"]
+        QD["deps<br/><i>dependencies</i>"]
+        QR["rdeps<br/><i>reverse deps</i>"]
+        QDef["def<br/><i>go to definition</i>"]
+        QRef["refs<br/><i>find references</i>"]
+        QCG["callgraph<br/><i>call graph</i>"]
+    end
+
+    subgraph Impact["Impact Analysis"]
+        QB["blast<br/><i>blast radius</i>"]
+        QSr["search<br/><i>semantic search</i>"]
+    end
+
+    Q --> Understanding
+    Q --> Navigation
+    Q --> Impact
+```
+
 ### 11.1.1 Output Formats
 
 All query commands support the `--format` flag:
@@ -809,7 +838,23 @@ Creates:
 - `src/lib.mn` — library root (for libraries).
 - `src/main.mn.intent` — entry point intent.
 
-### 11.8.2 `monel build`
+### 11.8.2 `monel sync`
+
+Install all project dependencies, dev dependencies, and tool binaries:
+
+```bash
+monel sync              # install deps + dev-deps + tools + dev-tools
+monel sync --prod       # install deps only (no dev-deps, no tools)
+monel sync --tools      # install/update tools only
+```
+
+`monel sync` is the single command that makes a freshly cloned project ready to build and run. It resolves library dependencies, fetches dev dependencies, and installs project-scoped tool binaries into `.monel/tools/`. The command is idempotent -- running it when everything is already installed completes in sub-100ms.
+
+The `--prod` flag restricts installation to `[dependencies]` only, skipping dev dependencies and tools. This is intended for production container builds and CI release pipelines.
+
+For full specification of tool dependencies and binary resolution, see Chapter 7, Section 7.7.4.
+
+### 11.8.3 `monel build`
 
 Compile the project:
 
@@ -823,11 +868,11 @@ monel build --emit asm             # emit assembly
 monel build --timings              # show compilation timing breakdown
 ```
 
-### 11.8.3 `monel check`
+### 11.8.4 `monel check`
 
 See [Section 11.5](#115-incremental-verification).
 
-### 11.8.4 `monel test`
+### 11.8.5 `monel test`
 
 Run tests:
 
@@ -842,7 +887,7 @@ monel test --property              # only property-based tests
 monel test --format json           # machine-readable results
 ```
 
-### 11.8.5 `monel audit`
+### 11.8.6 `monel audit`
 
 Security and safety auditing:
 
@@ -854,7 +899,7 @@ monel audit effects                # effect usage report
 monel audit --format json
 ```
 
-### 11.8.6 `monel semver-check`
+### 11.8.7 `monel semver-check`
 
 Verify semantic versioning compliance:
 
@@ -871,7 +916,7 @@ Detects:
 - New public symbols (minor).
 - Bug fixes with no API changes (patch).
 
-### 11.8.7 `monel metrics`
+### 11.8.8 `monel metrics`
 
 Code quality metrics:
 
@@ -890,11 +935,11 @@ Outputs:
 - Test coverage.
 - Dependency count and depth.
 
-### 11.8.8 `monel dev`
+### 11.8.9 `monel dev`
 
 Development server with watch mode. See [Section 11.9](#119-development-server).
 
-### 11.8.9 `monel repl`
+### 11.8.10 `monel repl`
 
 Interactive REPL:
 
