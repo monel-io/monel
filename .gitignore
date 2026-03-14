@@ -1,2 +1,7 @@
 /target
 .monel/
+.claude/
+.env*
+.DS_Store
+*.swp
+*.swo
