@@ -82,22 +82,103 @@ This separation is not a convention or a linter rule. It is a first-class archit
 
 The result: humans review intent (concise, declarative, readable) and parity reports (compiler-generated verification summaries) instead of tracing through generated implementation code.
 
-### 1.4.1 Relationship to Spec-Driven Development
+### 1.4.1 Competitive Landscape and Positioning
 
-Monel belongs to the **Spec-Driven Development (SDD)** movement — the emerging practice of writing specifications before code when working with AI coding assistants. Tools like OpenSpec, GitHub spec-kit, and similar frameworks have demonstrated strong demand for this workflow (OpenSpec alone reached 28k+ GitHub stars within months of launch).
+The problem Monel addresses — verifying that code does what a specification says — is approached from five directions today. None of them occupy Monel's position.
 
-These tools add a spec layer *on top of* existing languages: markdown files that AI agents are instructed to follow. They validate the problem — developers want spec-first AI workflows — but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. There is no mechanism to detect the divergence.
+#### Spec-Driven Development Tools (OpenSpec, GitHub Spec Kit, Kiro, Tessl)
 
-Monel is what happens when spec-driven development moves from tooling convention to language primitive. The intent layer is not a markdown file an agent is asked to read — it is a compiler-parsed artifact that the build system verifies against the implementation. The difference between a document and a specification is enforcement.
+The SDD movement has produced 30+ tools with over 100k combined GitHub stars. OpenSpec (31k stars, YC-backed), GitHub Spec Kit (77k stars), AWS Kiro, and Tessl all organize specifications as markdown documents that AI coding agents are instructed to follow.
 
-| | Convention-based SDD (OpenSpec, spec-kit) | Compiler-enforced SDD (Monel) |
-|---|---|---|
-| Spec format | Markdown / YAML (natural language) | Typed intent syntax (compiler-parsed) |
-| Enforcement | Agent is told to follow the spec | Code cannot build unless it matches intent |
-| Drift detection | Manual review | `monel check` (automatic, deterministic) |
-| Granularity | Feature / module | Function |
-| Verification | None (trust the agent) | Structural parity + optional semantic parity |
-| Works with existing languages | Yes | No — Monel is the language |
+**What they do:** Structure how AI agents receive and process specifications. Create planning workflows (propose, apply, archive). Generate task breakdowns from specs.
+
+**What they do not do:** Verify that the resulting code matches the specification. Martin Fowler's team confirmed this directly: agents frequently ignored instructions and created duplicates despite elaborate spec documentation. The Fowler analysis identified a risk of "false sense of control" despite elaborate workflows.
+
+These tools validate the demand — developers want spec-first AI workflows — but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. There is no mechanism to detect the divergence.
+
+#### Design-by-Contract Libraries (deal, icontract, Rust `contracts`)
+
+Languages like Python and Rust have libraries that add preconditions, postconditions, and invariants to functions. Python's `deal` (875 stars) includes a static linter. Python's `icontract` integrates with CrossHair for SMT-based symbolic verification. Rust's `contracts` crate (29 stars) provides `#[requires]`/`#[ensures]` macros.
+
+Rust is adding official contract support (MCP-759) to annotate unsafe stdlib functions — but only for `unsafe` code, not general specification enforcement.
+
+**What they do:** Add runtime assertions for pre/post conditions. Some offer partial static checking.
+
+**What they do not do:** Verify behavioral parity between a specification and implementation. They verify individual assertions, not "does this function do what the spec says it should do." They also do not track side effects.
+
+#### Formal Verification Languages (Dafny, Verus)
+
+Dafny (3.3k stars, Microsoft Research) and Verus (2.4k stars) provide true static verification — they prove code correctness for all possible inputs using SMT solvers.
+
+**What they do:** Prove that code satisfies formal specifications. Verus works on a subset of Rust. Dafny compiles to C#, Go, Python, Java. Both use Z3 for proof.
+
+**What they do not do:** Scale to everyday development. Both require heavy annotation (proof obligations, ghost code, loop invariants). Verus supports only a Rust subset. Dafny is a separate language. Neither has achieved mainstream adoption. Martin Kleppmann's influential thesis (Dec 2025) argues AI will eventually make formal verification mainstream, but this has not happened yet.
+
+#### Effect Systems (Effect-TS, Koka, Effekt)
+
+Effect-TS (13.6k stars) adds algebraic effects to TypeScript. Koka (3.8k stars, Microsoft Research) is a research language with first-class effects. Effekt is a research language from academia.
+
+**What they do:** Track side effects at the type level. Koka has the most complete effect system of any language.
+
+**What they do not do:** Work with existing mainstream languages. Effect-TS requires rewriting all code in its monadic style. Koka is explicitly "not ready for production use." Rust closed its effect system RFC (#1631) with no follow-up. Nobody has successfully added a real effect system to an existing language as a tool or library.
+
+#### AI Code Review Tools (Qodo, Augment Code Intent)
+
+Qodo (formerly CodiumAI) and Augment Code Intent use LLMs to review code, including checking against requirements. Augment's "Intent" product uses multi-agent orchestration with a verifier agent.
+
+**What they do:** LLM-based probabilistic code review. Check code against specs using AI judgment.
+
+**What they do not do:** Provide deterministic verification. An LLM reviewer can miss issues, hallucinate passes, or produce different results on different runs.
+
+#### Where Monel Sits
+
+```mermaid
+quadrantChart
+    title Verification Depth vs Adoption Barrier
+    x-axis Low Adoption Barrier --> High Adoption Barrier
+    y-axis Shallow Verification --> Deep Verification
+    quadrant-1 Powerful but niche
+    quadrant-2 The gap
+    quadrant-3 Easy but shallow
+    quadrant-4 Hard and shallow
+    OpenSpec: [0.2, 0.1]
+    Spec Kit: [0.2, 0.1]
+    Dafny: [0.85, 0.95]
+    Verus: [0.75, 0.9]
+    deal/icontract: [0.3, 0.35]
+    Effect-TS: [0.55, 0.4]
+    Koka: [0.7, 0.5]
+    Monel: [0.5, 0.7]
+```
+
+The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Monel targets the gap: **meaningful verification without requiring formal methods expertise**.
+
+#### Why a Language, Not a Tool
+
+The research strongly suggests that Monel's value cannot be delivered as a tool for existing languages:
+
+1. **Effect systems cannot be bolted on.** Rust closed its effect system RFC. Effect-TS requires rewriting all code. Nobody has successfully added effects to an existing language as a library. Effect tracking must be in the compiler.
+
+2. **Intent/implementation separation requires compiler enforcement.** A linter can check annotations; it cannot enforce that every public function has a corresponding specification, that the specification's type signature matches the implementation, or that the declared effects are a superset of the actual effects. These are compilation constraints, not lint rules.
+
+3. **Tiered verification is a language design decision.** Lightweight `does:`/`fails:` by default, `@strict` with SMT only where needed — this graduated approach requires the verification tier to be part of the declaration syntax, not an external annotation system.
+
+4. **The SDD tools prove the demand, not the solution.** 30+ tools with 100k+ stars demonstrate that developers want spec-first AI workflows. None solve enforcement. The gap is real and validated.
+
+The closest competitor is Verus (formal verification for Rust). But Verus and Monel solve different problems: Verus proves properties of existing Rust code for critical sections; Monel enforces spec-implementation correspondence as the default development workflow for AI-assisted coding.
+
+#### Comparison Table
+
+| | SDD Tools | DbC Libraries | Formal Verification | Monel |
+|---|---|---|---|---|
+| **Spec format** | Markdown | Decorators/macros | Proof annotations | Typed intent syntax |
+| **Enforcement** | Convention | Runtime assertions | Static proof | Compiler-enforced parity |
+| **Effect tracking** | None | `@pure` only (deal) | N/A | First-class effect system |
+| **Verification depth** | None | Pre/post conditions | Full correctness proof | Structural + optional semantic |
+| **Annotation burden** | Low | Medium | High | Low (lightweight) to Medium (@strict) |
+| **Works with existing languages** | Yes | Yes | Partial (Verus/Rust) | No |
+| **Deterministic** | N/A | Yes (runtime) | Yes (static) | Yes (Stages 1-3), advisory (Stage 4) |
+| **AI-agent optimized** | Workflow only | No | No | Query oracle, context gathering, edit-compatible errors |
 
 Convention-based SDD tools are Monel's natural on-ramp: teams already using spec-first workflows are the ideal early adopters.
 
@@ -292,39 +373,167 @@ cache = true                      # cache results for unchanged pairs
 
 **Design principle:** The LLM is always optional. A Monel project must compile and verify correctly without any LLM. Stage 4 adds a layer of semantic assurance but is never required for correctness. Core compilation (Stages 1-3, 5-6) works fully offline.
 
-### Stage 5: Code Generation
+### Stage 5: Code Generation (AI-Native)
 
-**Input:** Verified Implementation ASTs.
+**Input:** Verified Implementation ASTs, intent ASTs, effect analysis, parity map.
 
-**Operation:** Lower the verified ASTs to the target backend.
+Unlike traditional compilers, Monel's code generation stage has access to the full intent layer — not just the implementation code, but *what the code is supposed to do*. This enables optimizations and guarantees that no other compiler can provide.
+
+**Operation:** Lower the verified ASTs to the target backend, guided by intent metadata.
 
 **Targets:**
-- **LLVM IR** — for native compilation on all LLVM-supported architectures
+- **Cranelift** — for fast debug builds and development iteration
+- **LLVM IR** — for optimized release builds on all LLVM-supported architectures
 - **WASM** — for browser and edge deployment
-- **Monel IR** (future) — an intermediate representation for cross-target optimization
 
-**Operations:**
+**Standard operations:**
 - Monomorphization of generic functions
-- Inlining decisions based on `complexity:` annotations (when present)
 - Deterministic resource cleanup insertion (drop glue)
 - Optimization passes (configurable via build profiles)
 
-**Output:** Target-specific object files or bytecode.
+**Intent-guided operations (unique to Monel):**
+
+- **`panics: never` elimination.** When Stage 3 has proven a function panic-free, codegen removes all panic infrastructure (unwinding tables, panic formatting, abort paths). The proof has already been done — codegen exploits it. This produces smaller, faster binaries for verified functions.
+
+- **`complexity:` bound enforcement.** When a function declares `complexity: O(n)`, the optimizer rejects transformations that would violate the bound (e.g., an optimization that introduces an inner loop). The complexity contract constrains the optimizer, not just the programmer.
+
+- **Effect-aware optimization.** The effect system enables optimizations that require whole-program knowledge in traditional compilers:
+  - `effects: [pure]` → automatic memoization candidates, safe to parallelize, safe to reorder or eliminate if result is unused
+  - `effects: [Db.read]` (read-only) → safe to execute concurrently with other read-only calls to the same resource
+  - `effects: [Crypto.verify]` → security-sensitive: disable timing-dependent optimizations to prevent side-channel attacks (constant-time code generation)
+  - Effect budgets (e.g., `Db.write max_per_second = 1000`) → compile into lightweight runtime instrumentation (rate limiters, counters, circuit breakers injected by the compiler)
+
+- **Intent-tagged debug info.** In addition to standard debug info (source locations, variable names), Monel emits intent-mapped debug info: which `does:` description each instruction range corresponds to, which `@strict` contract governs each code path, and which effect is active at each point. This enables AI-native debugging (Section 1.7.1).
+
+**Output:** Target-specific object files or bytecode, plus intent-mapped debug metadata.
 
 ### Stage 6: Bundling
 
-**Input:** Object files, project manifest, deploy intent (if present).
+**Input:** Object files, project manifest, deploy intent (if present), parity verification results.
 
-**Operation:** Link object files into final artifacts. Package for distribution.
+**Operation:** Link object files into final artifacts. Package for distribution with verification metadata.
 
 **Artifacts:**
 - Executable binaries
 - Static and dynamic libraries
 - WASM modules with JavaScript bindings
 - Container images (when deploy intent specifies containerization)
-- Parity report bundles (machine-readable verification summaries for CI/CD)
+- **Parity manifest** — a signed, machine-readable record of all verification results embedded in the artifact:
 
-**Output:** Distributable artifacts in the `target/` directory.
+```json
+{
+  "monel_version": "0.1.0",
+  "build_hash": "sha256:abc123...",
+  "intent_hash": "sha256:def456...",
+  "parity": {
+    "structural": "pass",
+    "static_verification": "pass",
+    "semantic": {"status": "pass", "model": "claude-sonnet-4-20250514", "cached": true},
+    "strict_functions": 12,
+    "smt_proofs": 12,
+    "panic_free_functions": 8,
+    "effect_budgets": "all within limits"
+  }
+}
+```
+
+This manifest is a compliance artifact. Auditors can verify "this binary was built from code that passed all parity checks" without reading source code. CI/CD pipelines can gate deployments on parity status.
+
+**Output:** Distributable artifacts in the `target/` directory, each containing an embedded or sidecar parity manifest.
+
+### 1.7.1 AI-Native Compiler Architecture
+
+Traditional compilers are batch processors: source files in, binary out, done. Monel's compiler is designed as a **persistent semantic server** that AI coding tools interact with continuously.
+
+```mermaid
+graph TD
+    subgraph "Traditional Compiler"
+        T1["Source"] --> T2["Compile"] --> T3["Binary"]
+        T2 -->|"errors"| T4["Human reads,<br/>fixes, recompiles"]
+    end
+
+    subgraph "Monel Compiler Server"
+        M1["Source + Intent"]
+        M2["Live Semantic Model"]
+        M3["Binary + Parity Manifest"]
+
+        M1 -->|"incremental update"| M2
+        M2 -->|"build"| M3
+
+        AI["AI Agent"] -->|"monel query blast"| M2
+        AI -->|"monel context"| M2
+        AI -->|"monel check --watch"| M2
+        M2 -->|"structured JSON"| AI
+        AI -->|"edit .mn file"| M1
+    end
+```
+
+**Key architectural properties:**
+
+**1. The compiler maintains a live semantic model.**
+
+After initial compilation, the compiler keeps the full AST, type information, effect analysis, parity map, and dependency graph in memory. Queries (`monel query`, `monel context`) read from this model without recompilation. Edits trigger incremental updates — only the affected portion of the model is recomputed.
+
+This is not a language server bolted on after the fact (like rust-analyzer rebuilding a parallel model of rustc's state). The compiler and the query server are the same process, sharing the same data structures.
+
+**2. Speculative analysis without compilation.**
+
+An AI agent can ask "what would happen if I changed this?" without actually making the change:
+
+```bash
+monel query blast --fn authenticate --hypothetical "return_type: Result<Token, AuthError>"
+```
+
+The compiler evaluates the hypothetical against the live model and returns the impact — broken callers, parity violations, effect changes — in milliseconds. The agent uses this to plan changes before making them, reducing the edit-compile-fix cycle from minutes to a single query.
+
+**3. Intent-mapped diagnostics.**
+
+When a runtime error occurs, Monel's debug info maps the crash site back to intent:
+
+```
+PANIC at src/auth.mn:58 (fn authenticate @intent("authenticate"))
+  INTENT: "verify credentials against database and return session"
+  CONTRACT: ensures ok => result.user_id > 0
+  VIOLATION: result.user_id was 0
+  PARITY: @strict ensures clause not satisfied
+
+  RELEVANT INTENT CONTEXT:
+    errors:
+      InvalidCreds: "invalid username or password"
+      Locked: "account locked after 5+ failed attempts"
+```
+
+An AI debugger receives structured context — which intent was violated, which contract failed, what the function was supposed to do — rather than raw stack frames and register dumps. This transforms debugging from "trace through code" to "compare behavior against specification."
+
+**4. Effect-aware hot-swap.**
+
+During development (`monel dev`), the compiler uses effect information to determine which functions can be safely hot-swapped without restarting the process:
+
+| Effect | Hot-swap safety |
+|--------|----------------|
+| `pure` | Always safe — no state, no side effects |
+| `Db.read` | Safe if no cursor/connection is mid-transaction |
+| `Fs.write` | Safe if no file handle is open in the function |
+| `unsafe` | **Never auto-swapped** — requires explicit confirmation |
+
+The compiler generates swap stubs for safe functions and blocks on unsafe ones, using the effect system as a static safety classifier. This is not possible in compilers that lack effect tracking.
+
+**5. Parity-preserving builds.**
+
+The parity manifest embedded in every artifact creates a chain of trust from intent through compilation to deployment:
+
+```
+Intent (.mn.intent)
+  ↓  [Stage 2: structural match proven]
+Implementation (.mn)
+  ↓  [Stage 3: types, effects, contracts verified]
+  ↓  [Stage 4: semantic match confirmed (optional)]
+Binary (with embedded parity manifest)
+  ↓  [manifest: all checks passed, signed]
+Deployment (parity manifest checked by CI/CD gate)
+```
+
+No other compiler produces auditable build artifacts that link a binary back to its verified specification. This is the compliance story for regulated industries: the build system itself is the audit trail.
 
 ---
 
