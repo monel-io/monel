@@ -1,4 +1,4 @@
-# Monel Language Specification: Chapter 2 — Intent Syntax
+# 2. Intent Syntax
 
 **Version:** 0.1.0-draft
 **Status:** Working Draft
@@ -502,7 +502,7 @@ intent trait Serializable
 
 ## 2.9 Diagrammatic Intent
 
-Monel supports structured diagrammatic intent for expressing state machines, data flows, and protocol sequences. These are not comments or documentation — they are compiler-verified specifications.
+Monel supports structured diagrammatic intent for expressing state machines, data flows, and protocol sequences. The compiler verifies these specifications.
 
 ### 2.9.1 State Machine Intent
 

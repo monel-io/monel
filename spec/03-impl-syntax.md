@@ -1,4 +1,4 @@
-# Monel Language Specification: Chapter 3 — Implementation Syntax
+# 3. Implementation Syntax
 
 **Version:** 0.1.0-draft
 **Status:** Working Draft

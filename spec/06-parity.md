@@ -1,6 +1,6 @@
 # 6. Parity Checking
 
-This chapter specifies Monel's parity system — the compiler's mechanism for verifying that intent and implementation correspond. Parity is the defining feature of Monel's architecture: it makes human review of AI-generated code tractable by ensuring the implementation does what the intent says it should.
+This chapter specifies how the parity compiler verifies that intent and implementation correspond.
 
 ---
 

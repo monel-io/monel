@@ -2,7 +2,7 @@
 
 This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust — systems software, terminal emulators, editors, and performance-critical applications — while preserving the intent/implementation/parity architecture.
 
-The central design principle: **unsafe code is isolated, documented, and auditable**. The `unsafe` effect makes low-level operations visible in the intent layer, the parity compiler verifies that safety invariants are documented, and the hot-swap runtime requires explicit confirmation before reloading unsafe functions.
+The `unsafe` effect makes low-level operations visible in the intent layer. The parity compiler verifies that safety invariants are documented. The hot-swap runtime requires explicit confirmation before reloading unsafe functions.
 
 ---
 

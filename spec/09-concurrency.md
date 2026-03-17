@@ -9,7 +9,7 @@ Monel provides structured concurrency with full effect tracking. Asynchronous ex
 3. **Ownership-based safety** -- data race freedom is guaranteed through the type system, using unique mutable references (Rust-like ownership).
 4. **Typed channels** -- communication between concurrent tasks uses typed, bounded channels.
 
-These properties are enforced at compile time. A Monel program that compiles is free of data races by construction.
+The compiler enforces these properties at compile time.
 
 ## 9.2 The `async` Effect
 

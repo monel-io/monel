@@ -1,6 +1,6 @@
 # 5. Effect System
 
-This chapter specifies Monel's effect system — the mechanism by which side effects are declared, tracked, verified, and constrained. Effects are central to Monel's architecture: they bridge intent and implementation, enable safe hot-swapping, power the compiler-as-query-oracle, and give SRE teams compile-time control over runtime behavior.
+This chapter specifies how developers declare side effects and how the compiler tracks, verifies, and constrains them.
 
 ---
 

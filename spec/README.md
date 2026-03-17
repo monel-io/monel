@@ -1,16 +1,14 @@
 # Monel Language Specification
 
-**Version:** 0.1.0-draft | **Domain:** [monel.io](https://monel.io)
+**Version:** 0.1.0-draft
 
-Monel is an AI-first programming language with three layers:
+Monel is a programming language with a compiler that enforces human intent. Every function's contracts, effects, and error behavior are declared in intent files and verified against the implementation at compile time. See [how parity checking works](06-parity.md).
 
-- **Intent** (`.mn.intent`) — humans declare *what* the program should do
-- **Implementation** (`.mn`) — LLMs generate *how* it works
-- **Parity Compiler** (`monelc`) — verifies correspondence between intent and implementation
+- **Intent** (`.mn.intent`) — specifies *what*: contracts, effects, errors, invariants
+- **Implementation** (`.mn`) — specifies *how*: algorithms, data structures, control flow
+- **Parity Compiler** (`monelc`) — rejects code that doesn't match its intent
 
-This book contains the complete language specification.
-
-## Quick Links
+## Chapters
 
 | Chapter | Topic |
 |---------|-------|
