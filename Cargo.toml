@@ -4,6 +4,7 @@ members = [
     "crates/monel-intent-parser",
     "crates/monel-core",
     "crates/xtask",
+    "crates/monel-bench",
 ]
 resolver = "2"
 
