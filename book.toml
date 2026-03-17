@@ -12,6 +12,7 @@ build-dir = "target/book"
 default-theme = "navy"
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/monel-io/monel"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 [output.html.fold]
 enable = true
