@@ -3,13 +3,13 @@
 **Version:** 0.1.0-draft
 **Status:** Working Draft
 **Domain:** monel.io
-**Date:** 2026-03-12
+**Date:** 2026-03-18
 
 ---
 
 ## 3.1 Purpose of This Chapter
 
-This chapter defines the complete syntax and semantics of Monel implementation files (`.mn`). Implementation files contain the executable logic of a Monel program — the algorithms, data structures, and control flow that realize the intent declared in corresponding `.mn.intent` files. This chapter specifies the full EBNF grammar for `.mn` files.
+This chapter defines the complete syntax and semantics of Monel implementation files (`.mn`). Implementation files contain the executable logic of a Monel program — the algorithms, data structures, control flow, and inline contracts that the compiler verifies. This chapter specifies the full EBNF grammar for `.mn` files.
 
 ---
 
@@ -84,23 +84,15 @@ Type annotations are inferred within:
 - Closure parameters (when context provides enough information)
 - Generic type arguments (when inferable from usage)
 
-### 3.2.6 `@intent` Cross-References
-
-Every public function in an implementation file must carry an `@intent("name")` annotation that references the corresponding `intent fn` declaration in the intent file. This is the binding between the two layers — the parity compiler uses these annotations to establish the structural parity map (Pipeline Stage 2).
-
-Functions marked `@no_intent` are exempt from this requirement. They are implementation details not exposed in the intent layer. The compiler verifies that `@no_intent` functions are not public (a public function without intent is an error).
-
 ---
 
 ## 3.3 Edit-Friendly Syntax Rules
 
-The following rules are designed to make `.mn` files easy to edit programmatically (by LLMs and refactoring tools):
+The following rules make `.mn` files easy to edit programmatically (by LLMs and refactoring tools):
 
 ### 3.3.1 Function Signatures as Unique Anchors
 
 A function declaration always begins with `fn NAME` on its own line. The function name combined with its module path is globally unique. This means any function can be located by searching for the pattern `fn NAME`.
-
-Multi-parameter functions use the `params:` keyword block to list parameters on separate lines, but the `fn NAME` declaration is always a single line.
 
 ### 3.3.2 No Wildcard Imports
 
@@ -205,39 +197,149 @@ use auth/session {Session, SessionError}
 
 ## 3.6 Function Declarations
 
-Functions are the primary building block of Monel programs. Every function declaration follows a fixed structure.
+Functions are the primary building block of Monel programs. Every function declaration follows a fixed structure: signature, optional contract block, then body.
 
 ### 3.6.1 Basic Form
 
 ```
-fn NAME @intent("INTENT_REF")
-  params: PARAM_LIST
-  returns: TYPE
-  effects: EFFECT_LIST
-  body:
-    EXPR
+fn name(param: Type, param: Type) -> ReturnType
+  contract_clause*
+  body_expr
 ```
 
-- `fn NAME` — the function name. Always on its own line.
-- `@intent("INTENT_REF")` — cross-reference to the intent declaration. Required for all `pub` functions. The string must match the name of an `intent fn` declaration in the corresponding `.mn.intent` file.
-- `params:` — parameter block. Each parameter on its own line within this block. Parameters have the form `NAME: TYPE` or `NAME: mut TYPE`.
-- `returns:` — return type. Required. Use `()` for functions that return no meaningful value.
-- `effects:` — effect declaration. Same syntax as in intent files. Must be a subset of (or equal to) the effects declared in the intent.
-- `body:` — the function body. An indented block of expressions. The value of the last expression is the return value.
+- `fn NAME(PARAMS) -> TYPE` — the function signature. Always on its own line. Parameters are comma-separated within parentheses. The return type follows `->`.
+- **Contract clauses** — zero or more of `requires:`, `ensures:`, `effects:`, `panics:`, `doc:`. These appear between the signature and the body, each on its own indented line.
+- **Body** — an indented block of expressions. The value of the last expression is the return value. No `body:` keyword is required; the body begins at the first indented line that is not a contract clause.
 
-### 3.6.2 Self Parameters
+**Example:**
+
+```
+fn authenticate(creds: Credentials) -> Result<Session, AuthError>
+  requires:
+    creds.username.len > 0
+    creds.password.len > 0
+  ensures:
+    ok => result.user_id > 0
+    ok => result.expires_at > Clock.now()
+    err(Locked) => Db.failed_attempts(creds.username) >= 5
+  effects: [Db.read, Db.write, Crypto.verify, Log.write]
+  panics: never
+
+  let user = Db.find_user(creds.username)
+  match user
+    | None => Err(AuthError.InvalidCreds)
+    | Some(u) =>
+      if u.is_locked
+        Err(AuthError.Locked)
+      else
+        let valid = Crypto.verify(creds.password, u.hash)
+        if valid
+          let session = try Session.create(u)
+          Log.info("user authenticated", user_id: u.id)
+          Ok(session)
+        else
+          Log.warn("failed login attempt", user_id: u.id)
+          Err(AuthError.InvalidCreds)
+```
+
+### 3.6.2 Contract Clauses
+
+Contract clauses appear between the signature and the body. They are optional and may appear in any order, though the conventional order is `doc:`, `requires:`, `ensures:`, `effects:`, `panics:`.
+
+#### `doc:`
+
+A natural-language description of the function's purpose:
+
+```
+fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
+  doc: "adds element to top of stack"
+  ...
+```
+
+The `doc:` clause is a quoted string. It describes *what* the function does, not *how*.
+
+#### `requires:`
+
+Preconditions that must hold when the function is called. Each condition is on its own indented line:
+
+```
+fn withdraw(account: Account, amount: Money) -> Result<Money, BankError>
+  requires:
+    amount > Money(0)
+    account.balance >= amount
+  ...
+```
+
+When a function declares `requires:` clauses, the compiler verifies (via SMT) that all call sites satisfy the preconditions.
+
+#### `ensures:`
+
+Postconditions that the function guarantees on return. Postconditions may be qualified by `ok` or `err(Variant)` for `Result`-returning functions:
+
+```
+fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
+  ensures:
+    ok => self.size() == old(self.size()) + 1
+    ok => self.peek() == Some(val)
+    err => self.unchanged()
+  ...
+```
+
+The `old(expr)` function refers to the value of `expr` at function entry. The compiler verifies postconditions via SMT.
+
+#### `effects:`
+
+Declares the side effects the function may perform:
+
+```
+fn save_user(user: User) -> Result<Unit, DbError>
+  effects: [Db.write, Log.write]
+  ...
+```
+
+The `effects:` clause is optional. When omitted, the compiler infers effects from the function body. When present, the compiler checks that the inferred effects are a subset of the declared effects. Undeclared effects are a compilation error. A function with no `effects:` clause and no effectful calls in its body is pure.
+
+See Chapter 5 for the full effect vocabulary and checking rules.
+
+#### `panics:`
+
+Declares panic behavior:
+
+```
+fn safe_divide(a: Int, b: Int) -> Result<Int, MathError>
+  panics: never
+  ...
+```
+
+`panics: never` instructs the compiler to prove that no code path in the function can panic. If the proof fails, compilation fails.
+
+### 3.6.3 Compact Form
+
+Trivial functions may use the compact one-liner syntax with `=`:
+
+```
+fn len(self: Stack<T>) -> Int = self.elements.len()
+
+fn is_empty(self: Stack<T>) -> Bool = self.len() == 0
+
+fn double(x: Int) -> Int = x * 2
+```
+
+The compact form places the entire function on a single line: `fn NAME(PARAMS) -> TYPE = EXPR`. It cannot include contract clauses. Use the block form for functions that need contracts.
+
+### 3.6.4 Self Parameters
 
 Methods (functions associated with a type) use `self` as the first parameter:
 
 ```
-fn push @intent("push")
-  params:
-    self: mut Stack<T>
-    val: T
-  returns: Result<(), StackError>
+fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
   effects: [Atomic.write]
-  body:
-    ...
+
+  if self.elements.len() >= self.capacity
+    Err(StackError.Overflow)
+  else
+    self.elements.push(val)
+    Ok(())
 ```
 
 Self parameter forms:
@@ -245,66 +347,54 @@ Self parameter forms:
 - `self: mut TYPE` — mutable borrow
 - `self: owned TYPE` — takes ownership
 
-### 3.6.3 Short Form
-
-For functions with few parameters, the signature may use inline parameter syntax:
-
-```
-fn is_empty @intent("is_empty")
-  params: self: Stack<T>
-  returns: Bool
-  effects: []
-  body:
-    self.len == 0
-```
-
-### 3.6.4 `@no_intent` Functions
-
-Private helper functions that are not part of the intent layer use `@no_intent`:
-
-```
-fn compute_hash @no_intent
-  params: data: Bytes
-  returns: Hash
-  effects: []
-  body:
-    ...
-```
-
-`@no_intent` functions must not be `pub`. A `pub` function with `@no_intent` is a compilation error.
-
 ### 3.6.5 Generic Functions
 
 Generic type parameters are declared after the function name:
 
 ```
-fn map<A, B> @intent("map")
-  params:
-    self: List<A>
-    f: Fn(A) -> B
-  returns: List<B>
-  effects: []
-  body:
-    ...
+fn map<A, B>(self: List<A>, f: Fn(A) -> B) -> List<B>
+  ...
 ```
 
 Type parameter constraints use `:` syntax:
 
 ```
-fn sort<T: Ord> @intent("sort")
-  params: self: mut Vec<T>
-  returns: ()
-  effects: []
-  body:
-    ...
+fn sort<T: Ord>(self: mut Vec<T>) -> ()
+  ...
 ```
 
 Multiple constraints use `+`:
 
 ```
-fn serialize<T: Serialize + Debug> @intent("serialize")
+fn serialize<T: Serialize + Debug>(value: T) -> Result<Bytes, SerializeError>
   ...
 ```
+
+### 3.6.6 Visibility
+
+Functions are private to their module by default. Public functions use the `pub` keyword:
+
+```
+pub fn authenticate(creds: Credentials) -> Result<Session, AuthError>
+  ...
+```
+
+### 3.6.7 Async Functions
+
+Async functions use the `async` keyword before `fn`:
+
+```
+async fn fetch(url: Url) -> Result<Response, HttpError>
+  effects: [Net.connect]
+
+  let conn = await Net.connect(url.host)
+  let response = await conn.send(Request.get(url))
+  Ok(response)
+```
+
+- `async fn` declares an asynchronous function that returns a `Future`
+- `await EXPR` suspends execution until the future completes
+- Async functions may only be called with `await` or by spawning a task
 
 ---
 
@@ -621,45 +711,6 @@ Unsafe blocks permit operations that the compiler cannot verify for safety:
 
 The `effects:` declaration must include any effects performed in unsafe blocks. The compiler tracks that unsafe operations are contained within `unsafe` blocks and does not allow them outside.
 
-### 3.7.14 `async` / `await`
-
-```
-async fn fetch @intent("fetch")
-  params: url: Url
-  returns: Result<Response, HttpError>
-  effects: [Net.connect]
-  body:
-    let conn = await Net.connect(url.host)
-    let response = await conn.send(Request.get(url))
-    Ok(response)
-```
-
-- `async fn` declares an asynchronous function that returns a `Future`
-- `await EXPR` suspends execution until the future completes
-- Async functions may only be called with `await` or by spawning a task
-
-### 3.7.15 `@intent` Block Tags
-
-Within a function body, blocks may be tagged with `@intent("name")` to cross-reference block-level intent declarations:
-
-```
-fn create_account @intent("create_account")
-  params: request: CreateAccountRequest
-  returns: Result<Account, AccountError>
-  effects: [Db.read, Db.write]
-  body:
-    @intent("validate_password_strength")
-    let strength = Password.check_strength(request.password)
-    match strength
-      | Weak => Err(AccountError.WeakPassword)
-      | Strong =>
-        let account = Account.new(request.username, request.password)
-        try Db.insert(account)
-        Ok(account)
-```
-
-The `@intent` tag applies to the block of expressions that follow it at the same indentation level until the next `@intent` tag or the end of the enclosing block.
-
 ---
 
 ## 3.8 Type Declarations
@@ -737,7 +788,7 @@ type Option<T>
 type NAME = TYPE
 ```
 
-Type aliases create a new name for an existing type. They are interchangeable with the original type (not distinct types — for distinct types, see the intent layer).
+Type aliases create a new name for an existing type. They are interchangeable with the original type (not distinct types).
 
 ```
 type UserList = Vec<User>
@@ -750,13 +801,8 @@ type Callback = Fn(Event) -> ()
 
 ```
 trait NAME
-  fn METHOD_NAME
-    params: PARAM_LIST
-    returns: TYPE
-
-  fn METHOD_NAME
-    params: PARAM_LIST
-    returns: TYPE
+  fn METHOD_NAME(PARAMS) -> TYPE
+  fn METHOD_NAME(PARAMS) -> TYPE
 ```
 
 Traits declare a set of methods that types may implement. Trait method declarations have signatures but no bodies.
@@ -764,13 +810,8 @@ Traits declare a set of methods that types may implement. Trait method declarati
 **Example:**
 ```
 trait Serializable
-  fn serialize
-    params: self: Self
-    returns: Result<Bytes, SerializeError>
-
-  fn deserialize
-    params: data: Bytes
-    returns: Result<Self, DeserializeError>
+  fn serialize(self: Self) -> Result<Bytes, SerializeError>
+  fn deserialize(data: Bytes) -> Result<Self, DeserializeError>
 ```
 
 **Trait with associated types:**
@@ -778,17 +819,13 @@ trait Serializable
 trait Iterator
   type Item
 
-  fn next
-    params: self: mut Self
-    returns: Option<Self.Item>
+  fn next(self: mut Self) -> Option<Self.Item>
 ```
 
 **Trait bounds:**
 ```
 trait Sortable: Ord + Clone
-  fn sort
-    params: self: mut Self
-    returns: ()
+  fn sort(self: mut Self) -> ()
 ```
 
 ---
@@ -797,12 +834,9 @@ trait Sortable: Ord + Clone
 
 ```
 impl TRAIT for TYPE
-  fn METHOD_NAME @intent("INTENT_REF")
-    params: PARAM_LIST
-    returns: TYPE
-    effects: EFFECT_LIST
-    body:
-      EXPR
+  fn METHOD_NAME(PARAMS) -> TYPE
+    contract_clauses*
+    body_expr
 ```
 
 Implementations provide method bodies for a trait on a specific type.
@@ -810,34 +844,26 @@ Implementations provide method bodies for a trait on a specific type.
 **Example:**
 ```
 impl Serializable for Session
-  fn serialize @intent("session_serialize")
-    params: self: Session
-    returns: Result<Bytes, SerializeError>
-    effects: []
-    body:
-      let mut buf = Bytes.new()
-      try buf.write_string(self.user_id.to_string())
-      try buf.write_string(self.token.to_string())
-      try buf.write_i64(self.created_at.timestamp())
-      try buf.write_i64(self.expires_at.timestamp())
-      Ok(buf)
+  fn serialize(self: Session) -> Result<Bytes, SerializeError>
+    let mut buf = Bytes.new()
+    try buf.write_string(self.user_id.to_string())
+    try buf.write_string(self.token.to_string())
+    try buf.write_i64(self.created_at.timestamp())
+    try buf.write_i64(self.expires_at.timestamp())
+    Ok(buf)
 
-  fn deserialize @intent("session_deserialize")
-    params: data: Bytes
-    returns: Result<Session, DeserializeError>
-    effects: []
-    body:
-      let mut reader = Bytes.reader(data)
-      let user_id = try UserId.parse(try reader.read_string())
-      let token = try SessionToken.parse(try reader.read_string())
-      let created_at = try DateTime.from_timestamp(try reader.read_i64())
-      let expires_at = try DateTime.from_timestamp(try reader.read_i64())
-      Ok(Session
-        user_id: user_id
-        token: token
-        created_at: created_at
-        expires_at: expires_at
-      )
+  fn deserialize(data: Bytes) -> Result<Session, DeserializeError>
+    let mut reader = Bytes.reader(data)
+    let user_id = try UserId.parse(try reader.read_string())
+    let token = try SessionToken.parse(try reader.read_string())
+    let created_at = try DateTime.from_timestamp(try reader.read_i64())
+    let expires_at = try DateTime.from_timestamp(try reader.read_i64())
+    Ok(Session
+      user_id: user_id
+      token: token
+      created_at: created_at
+      expires_at: expires_at
+    )
 ```
 
 ### 3.10.1 Inherent Implementations
@@ -846,27 +872,23 @@ Methods may be defined directly on a type without a trait:
 
 ```
 impl Stack<T>
-  fn new @intent("stack_new")
-    params: capacity: Int
-    returns: Stack<T>
-    effects: []
-    body:
-      Stack
-        elements: Vec.with_capacity(capacity)
-        capacity: capacity
+  fn new(capacity: Int) -> Stack<T>
+    Stack
+      elements: Vec.with_capacity(capacity)
+      capacity: capacity
 
-  fn push @intent("push")
-    params:
-      self: mut Stack<T>
-      val: T
-    returns: Result<(), StackError>
+  fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
     effects: [Atomic.write]
-    body:
-      if self.elements.len() >= self.capacity
-        Err(StackError.Overflow)
-      else
-        self.elements.push(val)
-        Ok(())
+
+    if self.elements.len() >= self.capacity
+      Err(StackError.Overflow)
+    else
+      self.elements.push(val)
+      Ok(())
+
+  fn len(self: Stack<T>) -> Int = self.elements.len()
+
+  fn is_empty(self: Stack<T>) -> Bool = self.len() == 0
 ```
 
 ---
@@ -918,48 +940,44 @@ use crypto {Crypto}
 use log {Log}
 
 impl AuthService
-  fn authenticate @intent("authenticate")
-    params: creds: Credentials
-    returns: Result<Session, AuthError>
+  pub fn authenticate(creds: Credentials) -> Result<Session, AuthError>
+    doc: "authenticates a user and creates a session"
+    requires:
+      creds.username.len > 0
+      creds.password.len > 0
+    ensures:
+      ok => result.user_id > 0
     effects: [Db.read, Db.write, Log.write]
-    body:
-      let user = Db.find_user(creds.username)
-      match user
-        | None => Err(AuthError.InvalidCreds)
-        | Some(u) =>
-          if u.is_locked
-            Err(AuthError.Locked)
+    panics: never
+
+    let user = Db.find_user(creds.username)
+    match user
+      | None => Err(AuthError.InvalidCreds)
+      | Some(u) =>
+        if u.is_locked
+          Err(AuthError.Locked)
+        else
+          let valid = Crypto.verify(creds.password, u.hash)
+          if valid
+            let session = try Session.create(u)
+            Log.info("user authenticated", user_id: u.id)
+            Ok(session)
           else
-            let valid = Crypto.verify(creds.password, u.hash)
-            if valid
-              let session = try Session.create(u)
-              Log.info("user authenticated", user_id: u.id)
-              Ok(session)
-            else
-              Log.warn("failed login attempt", user_id: u.id)
-              Err(AuthError.InvalidCreds)
+            Log.warn("failed login attempt", user_id: u.id)
+            Err(AuthError.InvalidCreds)
 
-  fn revoke_session @intent("revoke_session")
-    params:
-      self: mut AuthService
-      token: SessionToken
-    returns: Result<(), AuthError>
+  pub fn revoke_session(self: mut AuthService, token: SessionToken) -> Result<(), AuthError>
     effects: [Db.write, Log.write]
-    body:
-      let session = try Db.find_session(token)
-      match session
-        | None => Err(AuthError.SessionNotFound)
-        | Some(s) =>
-          try Db.delete_session(s.id)
-          Log.info("session revoked", session_id: s.id)
-          Ok(())
 
-  fn validate_token @no_intent
-    params: token: SessionToken
-    returns: Bool
-    effects: []
-    body:
-      token.len() == 64 and token.is_alphanumeric()
+    let session = try Db.find_session(token)
+    match session
+      | None => Err(AuthError.SessionNotFound)
+      | Some(s) =>
+        try Db.delete_session(s.id)
+        Log.info("session revoked", session_id: s.id)
+        Ok(())
+
+  fn validate_token(token: SessionToken) -> Bool = token.len() == 64 and token.is_alphanumeric()
 ```
 
 ---
@@ -1019,11 +1037,6 @@ bool_literal    = "true" | "false" ;
 
 (* Comments *)
 comment         = "#" , { ? any character except newline ? } ;
-
-(* Intent annotation *)
-intent_annot    = "@intent(" , string_literal , ")" ;
-no_intent_annot = "@no_intent" ;
-fn_annot        = intent_annot | no_intent_annot ;
 ```
 
 ### 3.14.3 Type Expressions
@@ -1105,45 +1118,51 @@ top_level_decl  = fn_decl
 ```
 fn_decl         = [ "pub" ] , [ "async" ] , "fn" , ident
                 , [ "<" , type_param_list , ">" ]
-                , fn_annot
-                , NL , INDENT
-                , fn_block
+                , "(" , [ param_list ] , ")" , "->" , type_expr
+                , ( compact_body | block_body ) ;
+
+compact_body    = "=" , expr , NL ;
+
+block_body      = NL , INDENT
+                , { contract_clause }
+                , expr_block
                 , DEDENT ;
 
-fn_block        = params_clause
-                , returns_clause
-                , effects_clause
-                , body_clause ;
+param_list      = full_param , { "," , full_param } ;
 
-params_clause   = "params:" , ( inline_params | block_params ) , NL ;
-
-inline_params   = param , { "," , param } ;
-
-block_params    = NL , INDENT
-                , { param , NL }
-                , DEDENT ;
+full_param      = self_param | param ;
 
 param           = ident , ":" , [ "mut" ] , type_expr ;
 
 self_param      = "self" , ":" , [ "mut" | "owned" ] , type_expr ;
 
-full_param      = self_param | param ;
+contract_clause = doc_clause
+                | requires_clause
+                | ensures_clause
+                | effects_clause
+                | panics_clause ;
 
-(* inline_params and block_params may contain self_param as first element *)
+doc_clause      = "doc:" , string_literal , NL ;
 
-returns_clause  = "returns:" , type_expr , NL ;
+requires_clause = "requires:" , NL , INDENT
+                , { expr , NL }
+                , DEDENT ;
+
+ensures_clause  = "ensures:" , NL , INDENT
+                , { ensures_cond , NL }
+                , DEDENT ;
+
+ensures_cond    = [ ( "ok" | "err" | "err" , "(" , upper_ident , ")" ) , "=>" ] , expr ;
 
 effects_clause  = "effects:" , effect_list , NL ;
 
-body_clause     = "body:" , NL , INDENT
-                , expr_block
-                , DEDENT ;
+panics_clause   = "panics:" , "never" , NL ;
 ```
 
 ### 3.14.8 Expressions
 
 ```
-expr_block      = { ( let_expr | intent_tag | expr ) , NL } ;
+expr_block      = { ( let_expr | expr ) , NL } ;
 
 expr            = assign_expr ;
 
@@ -1306,15 +1325,7 @@ unsafe_expr     = "unsafe" , NL , INDENT
 return_expr     = "return" , expr ;
 ```
 
-### 3.14.16 `@intent` Block Tags
-
-```
-intent_tag      = intent_annot ;
-```
-
-An `@intent` tag on its own line applies to the subsequent expressions at the same indentation level until the next `@intent` tag or end of block.
-
-### 3.14.17 List and Tuple Literals
+### 3.14.16 List and Tuple Literals
 
 ```
 list_literal    = "[" , [ expr , { "," , expr } ] , "]" ;
@@ -1322,7 +1333,7 @@ list_literal    = "[" , [ expr , { "," , expr } ] , "]" ;
 tuple_literal   = "(" , expr , "," , expr , { "," , expr } , ")" ;
 ```
 
-### 3.14.18 Struct Literal
+### 3.14.17 Struct Literal
 
 ```
 struct_literal  = upper_ident , struct_body ;
@@ -1333,7 +1344,7 @@ struct_body     = "(" , field_init , { "," , field_init } , ")"    (* single-lin
 field_init      = ident , ":" , expr ;
 ```
 
-### 3.14.19 Type Declarations
+### 3.14.18 Type Declarations
 
 ```
 type_decl       = [ "pub" ] , "type" , upper_ident
@@ -1359,7 +1370,7 @@ enum_field      = ident , ":" , type_expr ;
 alias_type_body = "=" , type_expr , NL ;
 ```
 
-### 3.14.20 Trait Declarations
+### 3.14.19 Trait Declarations
 
 ```
 trait_decl      = [ "pub" ] , "trait" , upper_ident
@@ -1377,13 +1388,10 @@ trait_type_item  = "type" , upper_ident ;
 
 trait_method_item = "fn" , ident
                   , [ "<" , type_param_list , ">" ]
-                  , NL , INDENT
-                  , params_clause
-                  , returns_clause
-                  , DEDENT ;
+                  , "(" , [ param_list ] , ")" , "->" , type_expr ;
 ```
 
-### 3.14.21 Trait Implementation
+### 3.14.20 Trait Implementation
 
 ```
 impl_decl       = "impl" , impl_target , NL , INDENT
@@ -1395,13 +1403,11 @@ impl_target     = upper_ident , [ "<" , type_param_list , ">" ]
 
 impl_fn         = [ "pub" ] , [ "async" ] , "fn" , ident
                 , [ "<" , type_param_list , ">" ]
-                , fn_annot
-                , NL , INDENT
-                , fn_block
-                , DEDENT ;
+                , "(" , [ param_list ] , ")" , "->" , type_expr
+                , ( compact_body | block_body ) ;
 ```
 
-### 3.14.22 Constant Declarations
+### 3.14.21 Constant Declarations
 
 ```
 const_decl      = [ "pub" ] , "const" , ident , ":" , type_expr , "=" , expr , NL ;
@@ -1415,33 +1421,33 @@ The following constraints are enforced by the compiler but are not expressible i
 
 1. **Indentation.** All indentation uses exactly 2 spaces per level. Tabs are a lexical error. Mixed indentation is a lexical error. The formatter (`monel fmt`) is authoritative.
 
-2. **`@intent` requirement.** Every `pub fn` declaration must have either `@intent("name")` or `@no_intent`. Omitting both on a `pub fn` is a compilation error.
+2. **Expression types.** Both branches of `if`/`else` must have the same type. All arms of `match` must have the same type. The type of a block is the type of its last expression.
 
-3. **`@no_intent` visibility.** A function annotated with `@no_intent` must not be `pub`. `pub fn ... @no_intent` is a compilation error.
+3. **Match exhaustiveness.** `match` expressions must be exhaustive — every possible value of the scrutinee type must be covered by at least one arm. The compiler checks this statically for enum types and uses wildcard coverage for open types.
 
-4. **Expression types.** Both branches of `if`/`else` must have the same type. All arms of `match` must have the same type. The type of a block is the type of its last expression.
+4. **`try` context.** The `try` keyword may only appear inside a function whose return type is `Result<T, E>`. The error type of the `try` expression must be convertible to `E`.
 
-5. **Match exhaustiveness.** `match` expressions must be exhaustive — every possible value of the scrutinee type must be covered by at least one arm. The compiler checks this statically for enum types and uses wildcard coverage for open types.
+5. **`await` context.** The `await` keyword may only appear inside an `async fn`.
 
-6. **`try` context.** The `try` keyword may only appear inside a function whose return type is `Result<T, E>`. The error type of the `try` expression must be convertible to `E`.
+6. **`break`/`continue` context.** `break` and `continue` may only appear inside `loop`, `while`, or `for` expressions.
 
-7. **`await` context.** The `await` keyword may only appear inside an `async fn`.
+7. **Mutability.** Assignment (`=`) to a binding is only allowed if the binding was declared with `let mut`. Field assignment is only allowed through a `mut` reference.
 
-8. **`break`/`continue` context.** `break` and `continue` may only appear inside `loop`, `while`, or `for` expressions.
+8. **Effect containment.** When `effects:` is declared, the actual effects of a function body must be a subset of the declared list. When `effects:` is omitted, the compiler infers effects from the body. Effects are transitive through function calls.
 
-9. **Mutability.** Assignment (`=`) to a binding is only allowed if the binding was declared with `let mut`. Field assignment is only allowed through a `mut` reference.
+9. **Forward references.** Top-level declarations may reference each other regardless of declaration order within the file (forward references are resolved during name resolution). Within a function body, names must be declared before use (no forward references within bodies).
 
-10. **Effect containment.** The actual effects of a function body must be a subset of the declared `effects:` list. Effects are transitive through function calls.
+10. **Module correspondence.** The file `src/foo/bar.mn` defines module `foo/bar`. A `module` declaration, if present, must match this path.
 
-11. **Forward references.** Top-level declarations may reference each other regardless of declaration order within the file (forward references are resolved during name resolution). Within a function body, names must be declared before use (no forward references within bodies).
+11. **Unique function names.** Within a module, no two functions may have the same name. Overloading is not supported. Different arities do not create distinct functions.
 
-12. **Module correspondence.** The file `src/foo/bar.mn` defines module `foo/bar`. A `module` declaration, if present, must match this path. The corresponding intent file is `src/foo/bar.mn.intent`.
+12. **Single-line function signatures.** The `fn NAME(PARAMS) -> TYPE` declaration must occupy a single line. If a signature is too long for one line, the formatter wraps parameters across lines but the `fn name` token remains on the first line.
 
-13. **Unique function names.** Within a module, no two functions may have the same name. Overloading is not supported. Different arities do not create distinct functions.
+13. **Operator line continuation.** When an expression spans multiple lines, binary operators must be on the same line as the left operand. The continuation (right operand) is indented one level.
 
-14. **Single-line function names.** The `fn NAME` declaration must occupy a single line. If the function has generic parameters (`fn name<T, U>`), the generics are part of this line.
+14. **Contract clause ordering.** Contract clauses must appear before the function body. The compiler distinguishes contract clauses from body expressions by their keywords (`doc:`, `requires:`, `ensures:`, `effects:`, `panics:`).
 
-15. **Operator line continuation.** When an expression spans multiple lines, binary operators must be on the same line as the left operand. The continuation (right operand) is indented one level.
+15. **Compact form restrictions.** The compact form (`fn name(...) -> T = expr`) cannot include contract clauses. Use the block form for functions that need contracts.
 
 ---
 
@@ -1460,21 +1466,18 @@ and       or        not       as
 
 ---
 
-## 3.17 Comparison with Intent Syntax
+## 3.17 Contract Keywords in Implementation Files
 
-The following table summarizes the correspondence between intent and implementation constructs:
+The following keywords may appear as contract clauses between a function signature and its body:
 
-| Intent (`.mn.intent`) | Implementation (`.mn`) | Parity Check |
+| Keyword | Purpose | Verification |
 |---|---|---|
-| `intent fn NAME(...)` | `fn NAME @intent("NAME")` | Signature match |
-| `does: STRING` | Function body | Semantic (Stage 4, LLM) |
-| `fails: VARIANTS` | `Err(Variant)` returns | Exhaustiveness (Stage 3) |
-| `effects: [...]` | Actual effects in body | Subset check (Stage 3) |
-| `edge_cases:` | Function body | Semantic (Stage 4, LLM) |
-| `requires: EXPR` | Precondition holds at call sites | SMT (Stage 3) |
-| `ensures: ...` | Postcondition holds at return | SMT (Stage 3) |
-| `panics: never` | No panic paths | Static analysis (Stage 3) |
-| `invariant: EXPR` | Preserved across methods | SMT (Stage 3) |
-| `intent type NAME` | `type NAME` | Structure match (Stage 2) |
-| `intent module NAME` | `module NAME` / file path | Exports match (Stage 2) |
-| `intent state_machine` | Enum + transition fns | Reachability (Stage 3) |
+| `doc:` | Natural-language purpose description | Documentation; optional LLM review |
+| `requires:` | Preconditions | SMT-verified at call sites |
+| `ensures:` | Postconditions | SMT-verified at function return |
+| `effects:` | Side effect declaration | Inferred from body, checked against declaration |
+| `panics:` | Panic behavior (`never`) | Static proof of panic freedom |
+
+When `effects:` is omitted, the compiler infers effects from the function body. This is the common case for private helper functions. Public API functions conventionally include an explicit `effects:` declaration for readability and documentation.
+
+When `requires:` or `ensures:` clauses are present, the compiler uses SMT solving (Z3) to verify them. Functions without these clauses still receive type checking, effect checking, and borrow checking.

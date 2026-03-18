@@ -1,381 +1,212 @@
-# 6. Parity Checking
+# 6. Verification
 
-This chapter specifies how the parity compiler verifies that intent and implementation correspond.
+This chapter specifies how the Monel compiler verifies that implementation code satisfies its declared contracts.
 
 ---
 
 ## 6.1 Overview
 
-Parity checking answers the question: *does the implementation match the intent?*
+Contracts and implementation live in the same `.mn` file. The compiler verifies that every function's implementation satisfies its declared `requires:`, `ensures:`, `effects:`, `invariant:`, and `panics: never` contracts. All verification is deterministic and reproducible, with no LLM in the pipeline.
 
 ```mermaid
 graph LR
-    subgraph Intent[".mn.intent"]
-        IF["intent fn authenticate(...)"]
-        ID["does: 'verify credentials'"]
-        IE["effects: [Db.read, Crypto.verify]"]
-        IER["fails: InvalidCreds, Locked"]
+    subgraph ".mn file"
+        C["Contracts<br/><i>requires, ensures,<br/>effects, invariant</i>"]
+        I["Implementation<br/><i>body code</i>"]
     end
 
-    subgraph Impl[".mn"]
-        MF["fn authenticate @intent('authenticate')"]
-        MB["body: ...actual code..."]
-    end
+    C -->|"Stage 2:<br/>SMT + static analysis"| V["Verified"]
+    I -->|"Stage 2:<br/>type, effect, borrow"| V
 
-    IF -->|"Stage 2:<br/>signature match"| MF
-    IE -->|"Stage 3:<br/>effect subset"| MB
-    IER -->|"Stage 3:<br/>error exhaustiveness"| MB
-    ID -->|"Stage 4:<br/>semantic match (LLM)"| MB
-
-    style ID stroke-dasharray: 5 5
+    style V fill:#4a4,color:#fff
 ```
 
-This question decomposes into two levels:
+The compiler verifies five kinds of contracts:
 
-1. **Structural parity** — Do the shapes match? Are the right functions implemented with the right signatures, types, effects, and error variants? This is a deterministic, compiler-enforced check.
-
-2. **Semantic parity** — Does the behavior match? Does the implementation actually do what the `does:` description says? Does it handle the specified edge cases? This is an LLM-assisted, advisory check.
-
-Both levels are integrated into a single 6-stage compiler pipeline. Structural parity is mandatory and blocks compilation. Semantic parity is configurable and defaults to advisory.
+| Contract | Verification Method |
+|----------|-------------------|
+| `requires:` | SMT solver (Z3) proves preconditions hold at every call site |
+| `ensures:` | SMT solver proves postconditions hold at every return point |
+| `effects:` | Inference checking — inferred effects must be a subset of declared effects |
+| `invariant:` | SMT solver proves invariant holds after every mutation point |
+| `panics: never` | Static analysis proves no reachable code path can panic |
 
 ---
 
-## 6.2 The 6-Stage Compiler Pipeline
+## 6.2 The Four-Stage Compiler Pipeline
 
-The Monel compiler (`monelc`) processes code through six stages:
+The Monel compiler (`monelc`) processes code through four stages:
 
 ### Stage 1: Parse
 
-Both `.mn.intent` and `.mn` files are parsed independently into ASTs.
+`.mn` and `.mn.test` files are parsed into ASTs. Each function's contracts and body are parsed into a single AST node.
 
-- The intent parser produces an Intent AST: a tree of module declarations, function intents, type intents, state machines, layout declarations, and interaction specifications.
-- The implementation parser produces an Implementation AST: a standard program AST with functions, types, expressions, and `@intent("name")` annotations.
-- Parse errors in either layer halt compilation with diagnostics.
-- The two parsers are independent — a syntax error in the intent file does not prevent parsing the implementation file, and vice versa. Both error sets are reported.
+- Parse errors halt compilation with diagnostics.
+- The parser is incremental — a syntax error in one file does not prevent parsing other files.
 
-### Stage 2: Structural Parity
+### Stage 2: Static Verification
 
-The compiler matches every intent AST node to its corresponding implementation AST node and verifies structural agreement.
-
-This stage is **mandatory** and **deterministic**. It requires no external tools (no LLM, no SMT solver). It is a pure syntactic/type-level comparison.
-
-Details: Section 6.3.
-
-### Stage 3: Static Verification
-
-Standard compiler analyses run on the implementation AST:
+All verification runs on the parsed ASTs:
 
 - Type checking (Chapter 4)
 - Effect checking (Chapter 5)
 - Borrow checking (Chapter 4, Section 4.10)
 - Exhaustiveness checking for pattern matches
-- Refinement type verification:
-  - In lightweight mode: runtime check insertion
-  - In `@strict` mode: SMT solver verification (Z3)
-- `@strict` contract checking:
-  - `requires:` as preconditions
-  - `ensures:` as postconditions
-  - `invariant:` at all mutation points
-  - `panics: never` as absence-of-panic proof
+- Contract verification:
+  - `requires:` as preconditions (Section 6.3)
+  - `ensures:` as postconditions (Section 6.4)
+  - Per-error-variant postconditions (Section 6.4.1)
+  - `invariant:` at all mutation points (Section 6.5)
+  - `panics: never` as absence-of-panic proof (Section 6.6)
+- Refinement type verification (Section 6.7)
+- State machine verification (Section 6.8)
+- Layout and interaction verification (Section 6.9)
+- Verification coverage analysis (Section 6.10)
 
-Details: Section 6.5.
+### Stage 3: Code Generation
 
-### Stage 4: Semantic Parity
+The verified ASTs are lowered to the target representation:
 
-If an LLM is configured (`[llm]` in `monel.project`), the compiler invokes it to verify that the implementation's behavior matches the intent's semantic descriptions.
+- Cranelift (fast debug builds)
+- LLVM IR (optimized release builds)
+- WASM (browser and edge deployment)
 
-This stage is **optional**, **advisory by default**, and **cached**.
+See Chapter 9 (Code Generation).
 
-Details: Section 6.6.
-
-### Stage 5: Code Generation
-
-The verified implementation AST is lowered to the target representation:
-
-- WASM (default target for portability)
-- LLVM IR (for native compilation)
-- Native machine code (via LLVM backend)
-
-Code generation is standard compiler backend work and is not specific to the parity system. See Chapter 9 (Code Generation).
-
-### Stage 6: Bundling
+### Stage 4: Bundling
 
 The compiler packages:
 
 - Compiled artifacts (WASM module, native binary, etc.)
-- Intent files (for documentation and re-verification)
-- Parity manifest (Section 6.9): a JSON record of all parity checks and their results
+- Verification manifest (Section 6.12): a JSON record of all verification checks and their results
 
-This bundle is the deployable unit. The parity manifest enables downstream tools to verify that parity was checked without re-running the compiler.
-
----
-
-## 6.3 Structural Parity (Stage 2)
-
-Structural parity is the deterministic verification that intent and implementation shapes match. It is performed entirely within the compiler with no external dependencies.
-
-### 6.3.1 Function Parity
-
-Every `intent fn` declaration must have a corresponding implementation function tagged with `@intent("name")`:
-
-```yaml
-# users.mn.intent
-intent fn get_user
-  does: "Retrieve a user by ID from the database"
-  params:
-    id: UserId
-  returns: Result<User, UserError>
-  effects: [Db.read]
-  fails:
-    - UserError.NotFound: "no user with this ID exists"
-    - UserError.ConnectionLost: "database connection failed"
-```
-
-```
-// users.mn
-fn get_user(id: UserId) -> Result<User, UserError>
-  @intent("get_user")
-  effects: [Db.read]
-
-  let user = db.users.find(id)?
-  match user
-    Some(u) => Ok(u)
-    None => Err(UserError.NotFound)
-```
-
-The structural parity checker verifies:
-
-| Check | Rule | Error if violated |
-|-------|------|-------------------|
-| Existence | Every `intent fn` has a matching `@intent("name")` | `P0101: missing implementation for intent fn 'name'` |
-| Orphan detection | Every `@intent("name")` has a matching `intent fn` | `P0102: @intent("name") has no matching intent declaration` |
-| Parameter types | Parameter types match exactly (by name and type) | `P0103: parameter type mismatch` |
-| Parameter names | Parameter names match exactly | `P0104: parameter name mismatch` |
-| Parameter count | Same number of parameters | `P0105: parameter count mismatch` |
-| Return type | Return type matches exactly | `P0106: return type mismatch` |
-| Effect subset | Implementation effects are a subset of intent effects | `P0107: effect not declared in intent` |
-| Error exhaustiveness | Implementation handles all `fails:` / `errors:` variants | `P0108: unhandled error variant` |
-
-### 6.3.2 Signature Matching Rules
-
-**Exact type match**: Parameter and return types must be identical, not merely structurally equivalent. If the intent says `id: UserId`, the implementation must use `UserId`, not `Int` (even if `UserId` is a `distinct type` over `Int`).
-
-**Parameter order**: Parameters must appear in the same order in both layers.
-
-**Effect subset**: The implementation's declared effects must be a subset of the intent's. The implementation may declare fewer effects (it may not use all permissions granted by the intent). It must not declare effects outside the intent's set.
-
-**Error exhaustiveness**: For every variant listed in `fails:` or `errors:` in the intent, the implementation must have at least one code path that can produce that error. The compiler performs reachability analysis on error-producing paths to verify this.
-
-### 6.3.3 Type Parity
-
-Every `intent type` declaration must have a corresponding implementation type:
-
-```yaml
-intent type Port
-  does: "A valid TCP/UDP port number"
-  base: Int
-  where: value >= 1 and value <= 65535
-```
-
-```
-type Port = Int where value >= 1 and value <= 65535
-```
-
-Type parity checks:
-
-| Check | Rule | Error if violated |
-|-------|------|-------------------|
-| Existence | Every `intent type` has a corresponding implementation type | `P0201: missing implementation for intent type 'name'` |
-| Base type | Underlying type matches | `P0202: base type mismatch` |
-| Fields | Struct fields match in name, type, and order | `P0203: field mismatch` |
-| Variants | Enum variants match | `P0204: variant mismatch` |
-| Refinement compatibility | Implementation refinement is at least as restrictive | `P0205: refinement weakened` |
-| Nominal agreement | Semantically distinct intent types use `distinct type` | `P0206: expected distinct type` |
-
-**Refinement compatibility**: The implementation's `where` clause must logically imply the intent's `where` clause. Formally, for intent refinement `P_i` and implementation refinement `P_impl`, the check verifies `P_impl => P_i`. The implementation may be stricter (e.g., `value >= 1 and value <= 1023` satisfies `value >= 1 and value <= 65535`).
-
-### 6.3.4 Module Parity
-
-The compiler verifies that the module's exports match:
-
-| Check | Rule | Error if violated |
-|-------|------|-------------------|
-| Export completeness | Every intent-declared public function is exported | `P0301: intent fn 'name' not exported` |
-| No extra exports | Implementation does not export functions without intent declarations | `P0302: exported fn 'name' has no intent` (warning) |
-| Module structure | Intent module hierarchy matches implementation module hierarchy | `P0303: module structure mismatch` |
-
-The "no extra exports" check is a warning, not an error. Helper functions exported for testing or internal use do not need intent declarations, but the compiler flags them for review.
-
-### 6.3.5 Structural Parity Error Format
-
-All structural parity errors follow a consistent format with edit-compatible fix suggestions:
-
-```
-error[P0103]: parameter type mismatch for intent fn 'get_user'
-  --> src/users.mn:1:18
-   |
- 1 | fn get_user(id: Int) -> Result<User, UserError>
-   |                  ^^^ expected `UserId`, found `Int`
-   |
-   = note: intent declares `id: UserId` at users.mn.intent:4:5
-   = old_string: fn get_user(id: Int) -> Result<User, UserError>
-   = new_string: fn get_user(id: UserId) -> Result<User, UserError>
-```
-
-The `old_string` / `new_string` fields enable AI coding tools to apply fixes automatically.
+The verification manifest enables downstream tools to confirm that contracts were verified without re-running the compiler.
 
 ---
 
-## 6.4 Block-Level Parity
+## 6.3 Preconditions: `requires:`
 
-For complex functions, parity can be checked at a finer granularity than the whole function. Block-level parity maps intent clauses to implementation blocks.
-
-### 6.4.1 Intent Clauses
-
-An intent function can specify implementation blocks with `steps:`:
-
-```yaml
-intent fn process_order
-  does: "Process a new customer order end-to-end"
-  params:
-    order: Order
-  returns: Result<OrderConfirmation, OrderError>
-  effects: [Db.write, Http.send, KafkaPublish, Log.write]
-  steps:
-    validate_order:
-      does: "Validate order contents and customer eligibility"
-      effects: [Db.read]
-    reserve_inventory:
-      does: "Reserve inventory items for the order"
-      effects: [Db.write]
-    charge_payment:
-      does: "Charge the customer's payment method"
-      effects: [Http.send]
-    publish_event:
-      does: "Publish order creation event to message bus"
-      effects: [KafkaPublish]
-    confirm:
-      does: "Return confirmation to caller"
-      effects: []
-```
-
-### 6.4.2 Implementation Block Tags
-
-The implementation uses `@intent("block_name")` annotations on blocks:
+A `requires:` clause declares a precondition that must hold at every call site.
 
 ```
-fn process_order(order: Order) -> Result<OrderConfirmation, OrderError>
-  @intent("process_order")
-  effects: [Db.write, Http.send, KafkaPublish, Log.write]
-
-  @intent("validate_order")
-  let validated = validate_order_contents(order)?
-  check_customer_eligibility(order.customer_id)?
-
-  @intent("reserve_inventory")
-  for item in validated.items
-    inventory.reserve(item.sku, item.quantity)?
-
-  @intent("charge_payment")
-  let charge = payment_gateway.charge(order.payment_method, validated.total)?
-
-  @intent("publish_event")
-  events.publish(OrderCreated { order_id: validated.id, charge_id: charge.id })
-
-  @intent("confirm")
-  Ok(OrderConfirmation {
-    order_id: validated.id,
-    charge_id: charge.id,
-    estimated_delivery: estimate_delivery(validated)
-  })
-```
-
-### 6.4.3 Block Parity Checks
-
-| Check | Rule | Error if violated |
-|-------|------|-------------------|
-| Coverage | Every intent step has a matching `@intent("step")` block | `P0401: missing block for step 'name'` |
-| Order | Blocks appear in the same order as intent steps | `P0402: block order mismatch` (warning) |
-| Block effects | Effects used within a block are subset of that step's declared effects | `P0403: block effect violation` |
-| No orphan blocks | No `@intent("step")` without a corresponding intent step | `P0404: orphan block tag` |
-
-Block-level parity is optional. If an intent function does not specify `steps:`, no block-level checks are performed.
-
----
-
-## 6.5 Static Verification for @strict (Stage 3)
-
-Functions or modules annotated with `@strict` undergo formal verification using an SMT solver (Z3).
-
-### 6.5.1 Preconditions: `requires:`
-
-```yaml
-intent fn binary_search
-  @strict
-  does: "Find index of target in sorted array"
-  params:
-    arr: &Vec<Int>
-    target: Int
-  returns: Option<UInt>
+fn binary_search(arr: &Vec<Int>, target: Int) -> Option<UInt>
   requires:
-    - arr.is_sorted()
-    - arr.len() > 0
+    arr.is_sorted()
+    arr.len() > 0
+
+  let lo = 0
+  let hi = arr.len() - 1
+  // ... search logic ...
 ```
 
-The compiler generates a Z3 assertion that, at every call site of `binary_search`, the preconditions hold. If the solver cannot prove a precondition, the call site is flagged:
+The compiler translates each `requires:` clause into an SMT assertion and verifies it at every call site. If the solver cannot prove a precondition, the call site is flagged:
 
 ```
-error[S0101]: precondition `arr.is_sorted()` not proven at call site
+error[V0101]: precondition `arr.is_sorted()` not proven at call site
   --> src/search.mn:10:5
    |
 10 |   let idx = binary_search(data, key)
    |             ^^^^^^^^^^^^^ cannot prove `data.is_sorted()`
    |
    = help: add a sort before calling, or assert the condition
+   = old_string: let idx = binary_search(data, key)
+   = new_string: let sorted = data.sorted()
+                 let idx = binary_search(sorted, key)
 ```
 
-### 6.5.2 Postconditions: `ensures:`
+---
 
-```yaml
-intent fn sort
-  @strict
-  params:
-    arr: &mut Vec<Int>
+## 6.4 Postconditions: `ensures:`
+
+An `ensures:` clause declares a postcondition that must hold at every return point.
+
+```
+fn sort(arr: &mut Vec<Int>)
   ensures:
-    - arr.is_sorted()
-    - arr.len() == old(arr.len())
-    - arr.is_permutation_of(old(arr))
+    arr.is_sorted()
+    arr.len() == old(arr.len())
+    arr.is_permutation_of(old(arr))
+
+  // ... sort implementation ...
 ```
 
-The compiler generates a Z3 assertion that, at every return point of the function, the postconditions hold. `old(expr)` refers to the value of `expr` at function entry.
+The compiler generates an SMT assertion that, at every return point of the function, the postconditions hold. `old(expr)` refers to the value of `expr` at function entry.
 
-### 6.5.3 Invariants: `invariant:`
+### 6.4.1 Per-Error-Variant Postconditions
 
-```yaml
-intent type BoundedQueue<T>
-  @strict
+Functions returning `Result<T, E>` can specify postconditions per error variant. The compiler verifies each error path separately.
+
+```
+fn withdraw(self: &mut Account, amount: Money) -> Result<Receipt, AccountError>
+  requires:
+    amount > Money(0)
+  ensures:
+    ok => self.balance == old(self.balance) - amount
+    err(InsufficientFunds) => self == old(self)
+    err(Frozen) => self == old(self)
+  effects: [Db.write, Log.write]
+
+  if self.frozen
+    return Err(AccountError.Frozen)
+  if self.balance < amount
+    return Err(AccountError.InsufficientFunds)
+  self.balance = self.balance - amount
+  let receipt = Receipt.new(self.id, amount)
+  db.transactions.insert(receipt)?
+  Ok(receipt)
+```
+
+The `ok =>` postcondition applies to success paths. Each `err(Variant) =>` postcondition applies to the specific error path that produces that variant. The compiler uses control flow analysis to identify which return points correspond to which variants and verifies the appropriate postcondition for each.
+
+---
+
+## 6.5 Invariants: `invariant:`
+
+A type can declare invariants that must hold after every mutation.
+
+```
+type BoundedQueue<T>
+  items: Vec<T>
+  capacity: UInt
+
   invariant:
-    - self.len() <= self.capacity
-    - self.capacity > 0
+    self.items.len() <= self.capacity
+    self.capacity > 0
 ```
 
-Invariants are checked:
+Invariants are checked at:
 - After every constructor call
 - After every method that takes `&mut self`
-- At the beginning of every public method (assumed, not checked — this is the caller's responsibility)
+- At the beginning of every public method (assumed, not checked — this is the caller's responsibility via the constructor and mutation checks)
 
-### 6.5.4 Panic Freedom: `panics: never`
+```
+error[V0103]: invariant `self.items.len() <= self.capacity` not maintained
+  --> src/queue.mn:18:5
+   |
+18 |   self.items.push(item)
+   |   ^^^^^^^^^^^^^^^^^^^^ this mutation may violate the invariant
+   |
+   = help: check capacity before pushing
+   = old_string: self.items.push(item)
+   = new_string: if self.items.len() < self.capacity
+                   self.items.push(item)
+                 else
+                   Err(QueueError.Full)
+```
 
-```yaml
-intent fn safe_divide
-  @strict
-  params:
-    a: Int
-    b: Int
+---
+
+## 6.6 Panic Freedom: `panics: never`
+
+A function annotated with `panics: never` must be proven free of all panic paths.
+
+```
+fn safe_divide(a: Int, b: Int) -> Result<Int, MathError>
   requires:
-    - b != 0
-  returns: Int
+    b != 0
   panics: never
+
+  Ok(a / b)
 ```
 
 The compiler proves that no reachable code path can panic:
@@ -385,178 +216,77 @@ The compiler proves that no reachable code path can panic:
 - No division by zero
 - No assertion failures
 
-This is the strongest guarantee and requires all inputs to be constrained via `requires:`.
-
-### 6.5.5 SMT Solver Integration
-
-The compiler translates verification conditions into SMT-LIB format and invokes Z3:
-
-1. Function body is converted to SSA (Static Single Assignment) form.
-2. Each statement becomes an SMT assertion.
-3. The negation of the property to prove is asserted.
-4. If Z3 returns UNSAT, the property holds.
-5. If Z3 returns SAT, a counterexample is extracted and reported.
-6. If Z3 returns UNKNOWN (timeout), a warning is reported.
-
-The default timeout is 10 seconds per verification condition. It can be configured:
-
-```toml
-# monel.project
-[strict]
-smt_timeout_ms = 30000
-smt_memory_limit_mb = 4096
-```
-
-### 6.5.6 Limitations of @strict
-
-Not all properties can be verified by SMT:
-- Properties involving heap-allocated data structures (e.g., `is_sorted()` on a `Vec`) require loop invariants that the solver may not infer.
-- Floating-point arithmetic verification is limited.
-- Properties involving string operations are generally undecidable.
-
-When verification fails due to solver limitations (UNKNOWN), the compiler reports a warning with guidance:
+This is the strongest guarantee and typically requires inputs to be constrained via `requires:`.
 
 ```
-warning[S0199]: verification inconclusive for `ensures: arr.is_sorted()`
-  = note: Z3 returned UNKNOWN after 10000ms
-  = help: consider adding a loop invariant or relaxing to runtime check
+error[V0104]: possible panic in `panics: never` function
+  --> src/math.mn:12:5
+   |
+12 |   arr[idx]
+   |   ^^^^^^^^ index may be out of bounds
+   |
+   = note: `idx` has type `UInt`, `arr` has length `arr.len()`
+   = help: use `arr.get(idx)` which returns `Option<T>`, or add `requires: idx < arr.len()`
 ```
 
 ---
 
-## 6.6 Semantic Parity (Stage 4)
+## 6.7 Refinement Type Verification
 
-Semantic parity uses an LLM to verify that the implementation's behavior matches the intent's natural-language descriptions.
-
-### 6.6.1 What is Checked
-
-The LLM evaluates:
-
-1. **`does:` match** — Does the implementation actually do what the description says?
-2. **`edge_cases:` handling** — Does the implementation handle the listed edge cases?
-3. **Behavioral consistency** — Does the implementation's behavior match the intent's overall contract?
-
-### 6.6.2 How it Works
-
-For each function with an `@intent` tag, the compiler sends a prompt to the configured LLM containing:
-
-- The complete intent declaration
-- The complete implementation code
-- The function's type information and effect declarations
-- The results of structural parity (all passed)
-
-The LLM returns a structured assessment:
-
-```json
-{
-  "function": "user_service::get_user",
-  "does_match": { "result": "PASS", "confidence": 0.95, "reasoning": "..." },
-  "edge_cases": [
-    { "case": "user not found", "result": "PASS", "reasoning": "..." },
-    { "case": "database timeout", "result": "WARN", "reasoning": "..." }
-  ],
-  "overall": "PASS",
-  "notes": "..."
-}
-```
-
-### 6.6.3 Result Categories
-
-| Result | Meaning | Default Action |
-|--------|---------|----------------|
-| `PASS` | Implementation matches intent | Continue |
-| `WARN` | Possible mismatch, uncertain | Log warning, continue |
-| `FAIL` | Clear mismatch detected | Log error, continue (advisory) or halt (strict semantic mode) |
-
-By default, semantic parity is advisory — `FAIL` results are reported but do not block compilation. This can be changed:
-
-```toml
-# monel.project
-[semantic_parity]
-mode = "strict"  # "advisory" (default) | "strict" | "off"
-```
-
-In strict mode, `FAIL` results block compilation.
-
-### 6.6.4 Caching
-
-Semantic parity results are cached using content-addressed hashing:
-
-1. The intent declaration and implementation code are hashed (SHA-256).
-2. The hash is looked up in the cache.
-3. If found and the cache entry is not expired, the cached result is used.
-4. If not found, the LLM is invoked and the result is cached.
-
-Cache location: `.monel/semantic-cache/` in the project root.
-
-Cache invalidation: A cache entry is invalidated when either the intent or the implementation changes (the hash changes). Cache entries can also have a TTL:
-
-```toml
-[semantic_parity]
-cache_ttl_days = 30  # re-verify after 30 days even if unchanged
-```
-
-### 6.6.5 Multi-LLM Committee (Enterprise)
-
-For high-assurance environments, semantic parity can use multiple LLMs:
-
-```toml
-[semantic_parity]
-mode = "committee"
-models = ["claude-opus", "gpt-4", "gemini-ultra"]
-agreement_threshold = 2  # 2 out of 3 must agree
-```
-
-In committee mode:
-- All configured models are queried in parallel.
-- Each returns an independent assessment.
-- The final result is determined by majority vote.
-- Disagreements are logged with full reasoning from each model.
-
-### 6.6.6 Skipping Semantic Parity
-
-Semantic parity can be skipped entirely:
+Refinement types attach predicates to base types. The compiler verifies that every assignment to a refinement type satisfies the predicate.
 
 ```
-$ monel build --no-semantic
-```
+type Port = Int where value >= 1 and value <= 65535
 
-Or per-function with an annotation:
-
-```
-fn performance_critical_inner_loop(data: &Vec<Int>) -> Int
-  @intent("inner_loop")
-  @skip_semantic  // too complex for LLM to assess meaningfully
-  effects: []
+fn connect(host: String, port: Port) -> Result<Connection, NetError>
+  effects: [Net.connect]
   // ...
 ```
 
-### 6.6.7 LLM Configuration
+At every point where a value is assigned to a `Port`, the compiler verifies the predicate:
 
-```toml
-# monel.project
-[llm]
-provider = "anthropic"    # "anthropic" | "openai" | "local" | "custom"
-model = "claude-opus"
-api_key_env = "ANTHROPIC_API_KEY"
-max_tokens = 4096
-temperature = 0.0         # deterministic for caching consistency
-
-[llm.custom]
-endpoint = "https://llm.internal.company.com/v1/chat"
-auth_header = "X-API-Key"
-auth_env = "INTERNAL_LLM_KEY"
 ```
-
-When no `[llm]` section is configured, Stage 4 is skipped silently. The compiler is fully functional without an LLM — semantic parity is an enhancement, not a requirement.
+error[V0201]: refinement predicate not satisfied
+  --> src/net.mn:5:25
+   |
+ 5 |   let p: Port = user_input
+   |                 ^^^^^^^^^^ cannot prove `user_input >= 1 and user_input <= 65535`
+   |
+   = help: validate the input first
+   = old_string: let p: Port = user_input
+   = new_string: let p: Port = match Port.try_from(user_input)
+                   | Ok(port) => port
+                   | Err(_) => return Err(ConfigError.InvalidPort)
+```
 
 ---
 
-## 6.7 Diagrammatic Parity
+## 6.8 State Machine Verification
 
-Intent files can declare state machines. The parity checker verifies that implementation code paths correspond to the declared transitions.
+`.mn` files can declare state machines. The compiler verifies that implementation code paths correspond to declared transitions.
 
-For example, the `OrderLifecycle` state machine below is declared in intent and verified against the implementation's enum types and transition functions:
+### 6.8.1 State Machine Declaration
+
+```
+state_machine OrderLifecycle
+  states:
+    Created
+    Validated
+    Paid
+    Shipped
+    Delivered
+    Cancelled
+  transitions:
+    Created -> Validated: validate_order
+    Created -> Cancelled: cancel_order
+    Validated -> Paid: charge_payment
+    Validated -> Cancelled: cancel_order
+    Paid -> Shipped: ship_order
+    Paid -> Cancelled: cancel_and_refund
+    Shipped -> Delivered: confirm_delivery
+  initial: Created
+  terminal: [Delivered, Cancelled]
+```
 
 ```mermaid
 stateDiagram-v2
@@ -572,39 +302,7 @@ stateDiagram-v2
     Cancelled --> [*]
 ```
 
-The parity checker verifies: (1) every declared state exists as an enum variant, (2) every transition has a corresponding function, and (3) no undeclared transitions exist in the implementation.
-
-### 6.7.1 State Machine Intent
-
-```yaml
-intent state_machine OrderLifecycle
-  does: "Models the lifecycle of a customer order"
-  states:
-    Created:
-      does: "Order has been placed but not yet processed"
-    Validated:
-      does: "Order contents have been validated"
-    Paid:
-      does: "Payment has been charged"
-    Shipped:
-      does: "Order has been shipped"
-    Delivered:
-      does: "Order has been delivered"
-    Cancelled:
-      does: "Order has been cancelled"
-  transitions:
-    Created -> Validated: validate_order
-    Created -> Cancelled: cancel_order
-    Validated -> Paid: charge_payment
-    Validated -> Cancelled: cancel_order
-    Paid -> Shipped: ship_order
-    Paid -> Cancelled: cancel_and_refund
-    Shipped -> Delivered: confirm_delivery
-  initial: Created
-  terminal: [Delivered, Cancelled]
-```
-
-### 6.7.2 Implementation
+### 6.8.2 Implementation
 
 The implementation represents states as an enum and transitions as functions:
 
@@ -618,41 +316,43 @@ enum OrderState
   Cancelled
 
 fn validate_order(order: &mut Order) -> Result<Unit, OrderError>
-  @intent("OrderLifecycle::validate_order")
   effects: [Db.read]
-  assert order.state == OrderState.Created
+  requires:
+    order.state == OrderState.Created
+  ensures:
+    ok => order.state == OrderState.Validated
+
   // ... validation logic ...
   order.state = OrderState.Validated
   Ok(())
 ```
 
-### 6.7.3 Diagrammatic Parity Checks
+### 6.8.3 State Machine Checks
 
 | Check | Rule | Error if violated |
 |-------|------|-------------------|
-| State coverage | Every declared state exists as an enum variant | `P0501: missing state 'name'` |
-| Transition coverage | Every declared transition has a corresponding function | `P0502: missing transition function 'name'` |
-| Transition correctness | Each transition function moves from the declared source state to the declared destination state | `P0503: transition 'name' does not produce expected state change` |
-| No illegal transitions | No code path produces a state change not declared in the state machine | `P0504: undeclared transition from 'A' to 'B'` |
-| Reachability | All states are reachable from the initial state | `P0505: unreachable state 'name'` (warning) |
-| Terminal correctness | Terminal states have no outgoing transitions in code | `P0506: transition from terminal state 'name'` |
-| Initial state | The initial state is the only state used in constructors | `P0507: object constructed in non-initial state` |
+| State coverage | Every declared state exists as an enum variant | `V0501: missing state 'name'` |
+| Transition coverage | Every declared transition has a corresponding function | `V0502: missing transition function 'name'` |
+| Transition correctness | Each transition function moves from the declared source state to the declared destination state | `V0503: transition 'name' does not produce expected state change` |
+| No illegal transitions | No code path produces a state change not declared in the state machine | `V0504: undeclared transition from 'A' to 'B'` |
+| Reachability | All states are reachable from the initial state | `V0505: unreachable state 'name'` (warning) |
+| Terminal correctness | Terminal states have no outgoing transitions in code | `V0506: transition from terminal state 'name'` |
+| Initial state | The initial state is the only state used in constructors | `V0507: object constructed in non-initial state` |
 
 Transition correctness is verified by analyzing the control flow graph of each transition function. The compiler tracks the value of the state field and verifies that:
-- At entry, the state field matches the declared source state (or is asserted to).
+- At entry, the state field matches the declared source state (via `requires:` or assertion).
 - At all exits, the state field matches the declared destination state.
 
 ---
 
-## 6.8 Layout and Interaction Parity
+## 6.9 Layout and Interaction Verification
 
-For UI-related modules, intent files can declare layouts and interactions. These are verified against the implementation.
+For UI-related modules, `.mn` files can declare layouts and interactions. The compiler verifies these against the implementation.
 
-### 6.8.1 Layout Parity
+### 6.9.1 Layout Verification
 
-```yaml
-intent layout MainView
-  does: "Primary application view with sidebar and content area"
+```
+layout MainView
   regions:
     sidebar:
       width: 20%
@@ -663,30 +363,29 @@ intent layout MainView
   constraint: sidebar.width + content.width == 100%
 ```
 
-Layout parity checks:
+Layout checks:
 
 | Check | Rule | Error if violated |
 |-------|------|-------------------|
-| Region existence | Every declared region is created in the implementation | `P0601: missing region 'name'` |
-| Percentage sum | Regions with percentage widths/heights sum to 100% | `P0602: layout percentages do not sum to 100%` |
-| Min size satisfiability | Min sizes are satisfiable given the percentage constraints | `P0603: min sizes unsatisfiable` |
-| Custom constraints | Declared constraints are satisfiable | `P0604: layout constraint unsatisfiable` |
+| Region existence | Every declared region is created in the implementation | `V0601: missing region 'name'` |
+| Percentage sum | Regions with percentage widths/heights sum to 100% | `V0602: layout percentages do not sum to 100%` |
+| Min size satisfiability | Min sizes are satisfiable given the percentage constraints | `V0603: min sizes unsatisfiable` |
+| Custom constraints | Declared constraints are satisfiable | `V0604: layout constraint unsatisfiable` |
 
-### 6.8.2 Interaction Parity
+### 6.9.2 Interaction Verification
 
-```yaml
-intent interaction SearchFlow
-  does: "User searches for and selects a result"
+```
+interaction SearchFlow
   states:
-    idle: "Search box empty, no results shown"
-    typing: "User is typing, debounce timer running"
-    loading: "Search request in flight"
-    results: "Results displayed"
-    selected: "User has selected a result"
-    error: "Search failed"
+    idle
+    typing
+    loading
+    results
+    selected
+    error
   transitions:
     idle -> typing: on_keystroke
-    typing -> typing: on_keystroke (resets debounce)
+    typing -> typing: on_keystroke
     typing -> loading: debounce_expired
     loading -> results: search_success
     loading -> error: search_failure
@@ -695,84 +394,170 @@ intent interaction SearchFlow
     error -> typing: on_keystroke
 ```
 
-Interaction parity checks:
+Interaction checks:
 
 | Check | Rule | Error if violated |
 |-------|------|-------------------|
-| State reachability | All states are reachable from the initial state | `P0701: unreachable interaction state 'name'` |
-| Transition handling | All transitions have corresponding event handlers | `P0702: unhandled transition 'name'` |
-| Dead states | Non-terminal states have at least one outgoing transition | `P0703: dead interaction state 'name'` |
-| Event coverage | All declared events are handled in at least one state | `P0704: unused event 'name'` (warning) |
+| State reachability | All states are reachable from the initial state | `V0701: unreachable interaction state 'name'` |
+| Transition handling | All transitions have corresponding event handlers | `V0702: unhandled transition 'name'` |
+| Dead states | Non-terminal states have at least one outgoing transition | `V0703: dead interaction state 'name'` |
+| Event coverage | All declared events are handled in at least one state | `V0704: unused event 'name'` (warning) |
 
 ---
 
-## 6.9 Parity Manifest
+## 6.10 Verification Coverage
 
-Every build produces a parity manifest alongside the compiled output. The manifest is a JSON document recording all parity checks and their results.
+The compiler tracks the verification status of every public function. Each function is classified into one of three categories:
 
-### 6.9.1 Manifest Structure
+| Status | Meaning |
+|--------|---------|
+| **Proven** | All contracts verified via SMT |
+| **Tested** | No contracts present, but test coverage exists |
+| **Uncovered** | Neither contracts nor tests |
+
+Every public function must be either proven or tested. Uncovered functions are compilation errors.
+
+### 6.10.1 Coverage Rules
+
+A function is **proven** when it has at least one `requires:`, `ensures:`, `invariant:`, or `panics: never` clause, and all clauses pass SMT verification.
+
+A function is **tested** when it has no contract clauses and at least one test in a `.mn.test` file calls it.
+
+A function is **uncovered** when it has neither contracts nor tests.
+
+Private functions do not require coverage. They may still have contracts, in which case those contracts are verified.
+
+### 6.10.2 Configuration
+
+Coverage requirements are configurable in `monel.project`:
+
+```toml
+[verification]
+# Require contracts, tests, or either for public functions
+coverage = "contracts_or_tests"  # "contracts_or_tests" (default) | "contracts_required" | "tests_required" | "off"
+
+# Modules exempt from coverage requirements
+coverage_exempt = ["src/generated/*", "src/bindings/*"]
+```
+
+| Mode | Requirement |
+|------|-------------|
+| `contracts_or_tests` | Every public function must have contracts or tests |
+| `contracts_required` | Every public function must have at least one contract clause |
+| `tests_required` | Every public function must have test coverage |
+| `off` | No coverage requirement |
+
+### 6.10.3 Coverage Report
+
+```
+$ monel check --coverage
+
+Verification coverage:
+  Proven (SMT):     32 functions (64%)
+  Tested:           14 functions (28%)
+  Uncovered:         4 functions (8%)  ← compilation errors
+
+  Uncovered functions:
+    src/handlers.mn:12  fn handle_webhook
+    src/handlers.mn:45  fn handle_callback
+    src/sync.mn:8       fn sync_remote
+    src/sync.mn:30      fn resolve_conflicts
+```
+
+---
+
+## 6.11 Contract-Driven Test Generation
+
+The compiler can mechanically generate property tests from contracts. This is useful for functions that have contracts but would benefit from runtime validation in addition to SMT proof.
+
+### 6.11.1 Generation
+
+```
+$ monel test --generate-from-contracts
+```
+
+For a function:
+
+```
+fn clamp(value: Int, low: Int, high: Int) -> Int
+  requires:
+    low <= high
+  ensures:
+    result >= low
+    result <= high
+    (value >= low and value <= high) => result == value
+
+  if value < low then low
+  else if value > high then high
+  else value
+```
+
+The compiler generates property tests:
+
+```
+// Auto-generated: do not edit
+#[property_test]
+fn test_clamp_contracts(value: Int, low: Int, high: Int)
+  // Precondition filter
+  assume low <= high
+
+  let result = clamp(value, low, high)
+
+  // Postcondition assertions
+  assert result >= low
+  assert result <= high
+  if value >= low and value <= high
+    assert result == value
+```
+
+### 6.11.2 Configuration
+
+```toml
+[verification]
+# Generate property tests from contracts
+generate_contract_tests = false    # default: false
+contract_test_dir = "tests/generated/"
+contract_test_iterations = 1000   # property test iterations per function
+```
+
+Generated tests run as part of `monel test` and count toward verification coverage.
+
+---
+
+## 6.12 Verification Manifest
+
+Every build produces a verification manifest alongside the compiled output. The manifest is a JSON document recording all verification checks and their results.
+
+### 6.12.1 Manifest Structure
 
 ```json
 {
   "version": "1.0",
-  "timestamp": "2026-03-12T14:30:00Z",
+  "timestamp": "2026-03-18T14:30:00Z",
   "compiler_version": "0.1.0",
   "project": "my_service",
   "stages": {
     "parse": {
       "status": "PASS",
       "duration_ms": 45,
-      "intent_files": 12,
-      "impl_files": 15
-    },
-    "structural_parity": {
-      "status": "PASS",
-      "duration_ms": 120,
-      "checks": 87,
-      "passed": 87,
-      "warnings": 2,
-      "errors": 0,
-      "details": [
-        {
-          "check": "function_parity",
-          "function": "user_service::get_user",
-          "result": "PASS",
-          "checks_performed": ["existence", "signature", "effects", "errors"]
-        }
-      ]
+      "files": 15
     },
     "static_verification": {
       "status": "PASS",
       "duration_ms": 3400,
       "type_checks": 342,
       "effect_checks": 87,
-      "smt_queries": 5,
+      "smt_queries": 24,
       "smt_results": {
-        "proved": 4,
-        "unknown": 1,
+        "proved": 22,
+        "unknown": 2,
         "failed": 0
-      }
-    },
-    "semantic_parity": {
-      "status": "PASS",
-      "duration_ms": 8200,
-      "functions_checked": 24,
-      "cache_hits": 18,
-      "cache_misses": 6,
-      "results": {
-        "pass": 22,
-        "warn": 2,
-        "fail": 0
       },
-      "model": "claude-opus",
-      "details": [
-        {
-          "function": "user_service::get_user",
-          "hash": "a1b2c3d4e5f6...",
-          "result": "PASS",
-          "cached": true
-        }
-      ]
+      "coverage": {
+        "proven": 32,
+        "tested": 14,
+        "uncovered": 0
+      }
     }
   },
   "summary": {
@@ -784,120 +569,136 @@ Every build produces a parity manifest alongside the compiled output. The manife
 }
 ```
 
-### 6.9.2 Manifest Usage
+### 6.12.2 Manifest Usage
 
-The parity manifest enables:
+The verification manifest enables:
 
-1. **CI/CD verification**: Deployment pipelines can check that parity was verified without re-running the compiler.
-2. **Audit trails**: The manifest records exactly what was checked and when.
+1. **CI/CD gating**: Deployment pipelines can check that all contracts were verified without re-running the compiler.
+2. **Audit trails**: The manifest records what was checked and when.
 3. **Incremental builds**: The manifest identifies which functions need re-checking after changes.
-4. **Dashboard integration**: Monitoring tools can aggregate parity results across services.
+4. **Dashboard integration**: Monitoring tools can aggregate verification results across services.
 
-### 6.9.3 Manifest Location
+### 6.12.3 Manifest Location
 
 The manifest is written to:
-- `target/parity-manifest.json` (default)
+- `target/verification-manifest.json` (default)
 - Configurable via `monel.project`:
 
 ```toml
 [build]
-manifest_path = "target/parity-manifest.json"
+manifest_path = "target/verification-manifest.json"
 ```
 
 ---
 
-## 6.10 Incremental Parity
+## 6.13 SMT Solver Integration
 
-For large codebases, full parity checking on every build is expensive. Monel supports incremental parity checking.
+The compiler translates verification conditions into SMT-LIB format and invokes Z3.
 
-### 6.10.1 Change Detection
+### 6.13.1 Translation Process
+
+1. Function body is converted to SSA (Static Single Assignment) form.
+2. Each statement becomes an SMT assertion.
+3. The negation of the property to prove is asserted.
+4. If Z3 returns UNSAT, the property holds.
+5. If Z3 returns SAT, a counterexample is extracted and reported.
+6. If Z3 returns UNKNOWN (timeout), a warning is reported.
+
+### 6.13.2 Configuration
+
+```toml
+# monel.project
+[verification]
+smt_timeout_ms = 10000          # default: 10000
+smt_memory_limit_mb = 4096      # default: 4096
+timeout_is_error = false         # default: false (treat timeout as warning)
+```
+
+### 6.13.3 Limitations
+
+Not all properties can be verified by SMT:
+- Properties involving heap-allocated data structures (e.g., `is_sorted()` on a `Vec`) may require loop invariants that the solver cannot infer.
+- Floating-point arithmetic verification is limited.
+- Properties involving string operations are generally undecidable.
+
+When verification is inconclusive (UNKNOWN), the compiler reports a warning with guidance:
+
+```
+warning[V0199]: verification inconclusive for `ensures: arr.is_sorted()`
+  = note: Z3 returned UNKNOWN after 10000ms
+  = help: consider adding a loop invariant or adding tests for this property
+```
+
+---
+
+## 6.14 Incremental Verification
+
+For large codebases, full verification on every build is expensive. Monel supports incremental verification.
+
+### 6.14.1 Change Detection
 
 ```
 $ monel check --changed
 ```
 
-The `--changed` flag restricts parity checking to files that have changed since the last successful build. Change detection uses:
+The `--changed` flag restricts verification to files that have changed since the last successful build. Change detection uses:
 
-1. **File timestamps**: Modified `.mn` or `.mn.intent` files are candidates.
+1. **File timestamps**: Modified `.mn` files are candidates.
 2. **Content hashing**: Files with changed timestamps are hashed; only those with actual content changes are re-checked.
 3. **Dependency tracking**: If function `f` depends on function `g`, and `g` changed, then `f` is re-checked.
 
-### 6.10.2 Dependency Graph
+### 6.14.2 Dependency Graph
 
 The compiler maintains a dependency graph mapping each function to:
 - Functions it calls
 - Types it uses
 - Effects it depends on
-- Intent declarations it corresponds to
+- Contracts that reference shared types or functions
 
 When a node in the dependency graph changes, all dependents are invalidated and re-checked.
 
-### 6.10.3 Incremental Semantic Parity
-
-Semantic parity uses content-addressed caching (Section 6.6.4). Even in a full build, unchanged functions use cached results. The `--changed` flag additionally skips structural and static checks for unchanged functions.
-
-### 6.10.4 Cache Management
-
-```
-$ monel cache stats
-Semantic parity cache:
-  Entries: 342
-  Size: 2.4 MB
-  Hit rate (last build): 85%
-  Oldest entry: 2026-02-15
-
-$ monel cache clear
-Cleared 342 cache entries.
-
-$ monel cache clear --older-than 14d
-Cleared 45 cache entries older than 14 days.
-```
-
 ---
 
-## 6.11 Edit-Compatible Errors
+## 6.15 Edit-Compatible Errors
 
-Every parity error includes machine-readable fix suggestions in the `old_string` / `new_string` format. This enables AI coding tools to apply fixes automatically.
+Every verification error includes machine-readable fix suggestions in the `old_string` / `new_string` format. This enables AI coding tools to apply fixes automatically.
 
-### 6.11.1 Error Format
+### 6.15.1 Error Format
 
 ```
-error[P0103]: parameter type mismatch for intent fn 'save_user'
-  --> src/users.mn:1:23
+error[V0101]: precondition `balance >= amount` not proven at call site
+  --> src/account.mn:22:5
    |
- 1 | fn save_user(user: UserRecord) -> Result<Unit, DbError>
-   |                    ^^^^^^^^^^ expected `User`, found `UserRecord`
+22 |   let receipt = withdraw(account, amount)
+   |                 ^^^^^^^^ cannot prove `account.balance >= amount`
    |
-   = note: intent declares `user: User` at users.mn.intent:3:5
-   = old_string: fn save_user(user: UserRecord) -> Result<Unit, DbError>
-   = new_string: fn save_user(user: User) -> Result<Unit, DbError>
+   = note: `withdraw` requires `balance >= amount` at account.mn:8:5
+   = old_string: let receipt = withdraw(account, amount)
+   = new_string: if account.balance >= amount
+                   let receipt = withdraw(account, amount)
+                 else
+                   return Err(PaymentError.InsufficientFunds)
 ```
 
-### 6.11.2 Multi-Fix Errors
+### 6.15.2 Multi-Fix Errors
 
 Some errors require multiple fixes. These are presented as an ordered list:
 
 ```
-error[P0108]: unhandled error variant 'UserError.RateLimited'
-  --> src/users.mn:5:3
+error[V0102]: postcondition `result.len() == old(items.len())` not proven
+  --> src/transform.mn:15:3
    |
-   = note: intent declares `fails: UserError.RateLimited` but no code path produces it
    = fix[1]:
-     = file: src/users.mn
-     = old_string: fn get_user(id: UserId) -> Result<User, UserError>
-                     @intent("get_user")
-                     effects: [Db.read]
-
-                     let user = db.users.find(id)?
-     = new_string: fn get_user(id: UserId) -> Result<User, UserError>
-                     @intent("get_user")
-                     effects: [Db.read]
-
-                     rate_limiter.check()?
-                     let user = db.users.find(id)?
+     = file: src/transform.mn
+     = old_string: fn transform(items: &Vec<Item>) -> Vec<Output>
+                     ensures:
+                       result.len() == old(items.len())
+     = new_string: fn transform(items: &Vec<Item>) -> Vec<Output>
+                     ensures:
+                       result.len() <= old(items.len())
 ```
 
-### 6.11.3 JSON Error Output
+### 6.15.3 JSON Error Output
 
 For programmatic consumption:
 
@@ -909,17 +710,17 @@ $ monel check --format json
 {
   "errors": [
     {
-      "code": "P0103",
+      "code": "V0101",
       "severity": "error",
-      "message": "parameter type mismatch for intent fn 'save_user'",
-      "file": "src/users.mn",
-      "line": 1,
-      "column": 23,
+      "message": "precondition `balance >= amount` not proven at call site",
+      "file": "src/account.mn",
+      "line": 22,
+      "column": 5,
       "fixes": [
         {
-          "file": "src/users.mn",
-          "old_string": "fn save_user(user: UserRecord) -> Result<Unit, DbError>",
-          "new_string": "fn save_user(user: User) -> Result<Unit, DbError>"
+          "file": "src/account.mn",
+          "old_string": "let receipt = withdraw(account, amount)",
+          "new_string": "if account.balance >= amount\n  let receipt = withdraw(account, amount)\nelse\n  return Err(PaymentError.InsufficientFunds)"
         }
       ]
     }
@@ -934,11 +735,11 @@ $ monel check --format json
 
 ---
 
-## 6.12 Semantic Diff
+## 6.16 Semantic Diff
 
-The `monel diff` command shows what changed between two versions in terms of structural parity:
+The `monel diff` command shows what changed between two versions in terms of contracts and verification:
 
-### 6.12.1 Basic Usage
+### 6.16.1 Basic Usage
 
 ```
 $ monel diff HEAD~1
@@ -947,60 +748,58 @@ $ monel diff HEAD~1
 Output:
 
 ```
-Structural changes since abc1234:
+Changes since abc1234:
 
   Modified functions:
     user_service::save_user
       - effects: [Db.write] -> [Db.write, Log.write]  (effect added)
+      - ensures: +1 clause added
       - return type: unchanged
-      - parameters: unchanged
 
     user_service::get_user
       - parameters: id: Int -> id: UserId  (type changed)
 
   New functions:
     user_service::delete_user
-      - intent: present
-      - parity: not yet checked
+      - contracts: requires (1), ensures (2)
+      - verification: not yet checked
 
   Removed functions:
     user_service::archive_user
-      - intent: still present (ORPHAN WARNING)
 
   Type changes:
     UserProfile
       - added field: avatar_url: Option<String>
+      - invariant: unchanged
 ```
 
-### 6.12.2 Diff Against Intent
+### 6.16.2 Verification Status Diff
 
 ```
-$ monel diff --intent
+$ monel diff --verification
 ```
 
-Shows the current state of parity between intent and implementation without reference to git history:
+Shows the current verification status of all public functions:
 
 ```
-Parity status:
+Verification status:
 
-  Matched (32 functions):
-    user_service::get_user .............. PASS
-    user_service::save_user ............. PASS
-    order_service::create_order ......... PASS
+  Proven (32 functions):
+    user_service::get_user .............. SMT verified
+    user_service::save_user ............. SMT verified
+    order_service::create_order ......... SMT verified
     ...
 
-  Mismatched (2 functions):
-    user_service::update_email .......... FAIL (signature mismatch)
-    payment_service::refund ............. FAIL (missing implementation)
+  Tested (14 functions):
+    handlers::handle_request ............ 3 tests
+    handlers::parse_input ............... 2 tests
+    ...
 
-  Unmatched intent (1):
-    notification_service::send_alert .... no implementation
-
-  Unmatched implementation (1):
-    user_service::_internal_helper ...... no intent (OK, not exported)
+  Uncovered (0 functions):
+    (none)
 ```
 
-### 6.12.3 JSON Diff
+### 6.16.3 JSON Diff
 
 ```
 $ monel diff HEAD~1 --format json
@@ -1010,134 +809,139 @@ Returns structured JSON for programmatic consumption.
 
 ---
 
-## 6.13 Error Code Reference
+## 6.17 Error Code Reference
 
-All parity-related error codes are in the `P` series (structural parity) and `S` series (static verification):
+All verification-related error codes use the `V` prefix:
 
-### Structural Parity (P series)
-
-| Code | Description |
-|------|-------------|
-| `P0101` | Missing implementation for intent function |
-| `P0102` | Orphan `@intent` tag (no matching intent declaration) |
-| `P0103` | Parameter type mismatch |
-| `P0104` | Parameter name mismatch |
-| `P0105` | Parameter count mismatch |
-| `P0106` | Return type mismatch |
-| `P0107` | Effect not declared in intent |
-| `P0108` | Unhandled error variant |
-| `P0201` | Missing implementation for intent type |
-| `P0202` | Base type mismatch |
-| `P0203` | Field mismatch (struct) |
-| `P0204` | Variant mismatch (enum) |
-| `P0205` | Refinement weakened |
-| `P0206` | Expected distinct type |
-| `P0301` | Intent function not exported |
-| `P0302` | Exported function without intent (warning) |
-| `P0303` | Module structure mismatch |
-| `P0401` | Missing block for intent step |
-| `P0402` | Block order mismatch (warning) |
-| `P0403` | Block effect violation |
-| `P0404` | Orphan block tag |
-| `P0501` | Missing state machine state |
-| `P0502` | Missing transition function |
-| `P0503` | Incorrect state transition |
-| `P0504` | Undeclared state transition |
-| `P0505` | Unreachable state (warning) |
-| `P0506` | Transition from terminal state |
-| `P0507` | Construction in non-initial state |
-| `P0601` | Missing layout region |
-| `P0602` | Layout percentages do not sum to 100% |
-| `P0603` | Min sizes unsatisfiable |
-| `P0604` | Layout constraint unsatisfiable |
-| `P0701` | Unreachable interaction state |
-| `P0702` | Unhandled interaction transition |
-| `P0703` | Dead interaction state |
-| `P0704` | Unused interaction event (warning) |
-
-### Static Verification (S series)
+### Contract Verification (V01xx)
 
 | Code | Description |
 |------|-------------|
-| `S0101` | Precondition (`requires:`) not proven at call site |
-| `S0102` | Postcondition (`ensures:`) not proven at return site |
-| `S0103` | Invariant not maintained after mutation |
-| `S0104` | Panic possible in `panics: never` function |
-| `S0105` | SMT solver timeout (verification inconclusive) |
-| `S0106` | SMT solver reported unknown (verification inconclusive) |
+| `V0101` | Precondition (`requires:`) not proven at call site |
+| `V0102` | Postcondition (`ensures:`) not proven at return site |
+| `V0103` | Invariant not maintained after mutation |
+| `V0104` | Panic possible in `panics: never` function |
+| `V0105` | SMT solver timeout (verification inconclusive) |
+| `V0106` | SMT solver returned unknown (verification inconclusive) |
+| `V0107` | Per-error-variant postcondition not proven |
+| `V0199` | Verification inconclusive (general) |
+
+### Refinement Types (V02xx)
+
+| Code | Description |
+|------|-------------|
+| `V0201` | Refinement predicate not satisfied |
+| `V0202` | Refinement compatibility — implementation weaker than declaration |
+
+### State Machine (V05xx)
+
+| Code | Description |
+|------|-------------|
+| `V0501` | Missing state machine state |
+| `V0502` | Missing transition function |
+| `V0503` | Incorrect state transition |
+| `V0504` | Undeclared state transition |
+| `V0505` | Unreachable state (warning) |
+| `V0506` | Transition from terminal state |
+| `V0507` | Construction in non-initial state |
+
+### Layout (V06xx)
+
+| Code | Description |
+|------|-------------|
+| `V0601` | Missing layout region |
+| `V0602` | Layout percentages do not sum to 100% |
+| `V0603` | Min sizes unsatisfiable |
+| `V0604` | Layout constraint unsatisfiable |
+
+### Interaction (V07xx)
+
+| Code | Description |
+|------|-------------|
+| `V0701` | Unreachable interaction state |
+| `V0702` | Unhandled interaction transition |
+| `V0703` | Dead interaction state |
+| `V0704` | Unused interaction event (warning) |
+
+### Coverage (V08xx)
+
+| Code | Description |
+|------|-------------|
+| `V0801` | Public function has neither contracts nor tests |
+| `V0802` | Public function missing contracts (`contracts_required` mode) |
+| `V0803` | Public function missing tests (`tests_required` mode) |
 
 ---
 
-## 6.14 Configuration Reference
+## 6.18 Configuration Reference
 
-All parity-related configuration in `monel.project`:
+All verification-related configuration in `monel.project`:
 
 ```toml
-[parity]
-# Structural parity mode: "strict" (errors block) or "warn" (all warnings)
-structural_mode = "strict"      # default: "strict"
+[verification]
+# Verification coverage mode
+coverage = "contracts_or_tests"   # "contracts_or_tests" | "contracts_required" | "tests_required" | "off"
 
-# Whether to check block-level parity
-block_parity = true             # default: true
+# Modules exempt from coverage requirements
+coverage_exempt = []
 
-# Whether to check diagrammatic (state machine) parity
-diagram_parity = true           # default: true
+# SMT solver timeout per verification condition (ms)
+smt_timeout_ms = 10000            # default: 10000
 
-# Whether to check layout parity
-layout_parity = true            # default: true
+# SMT solver memory limit (MB)
+smt_memory_limit_mb = 4096        # default: 4096
 
-# Whether to check interaction parity
-interaction_parity = true       # default: true
+# Whether SMT timeout is treated as error or warning
+timeout_is_error = false           # default: false
 
-[semantic_parity]
-# Semantic parity mode
-mode = "advisory"               # "advisory" | "strict" | "committee" | "off"
+# Generate property tests from contracts
+generate_contract_tests = false    # default: false
 
-# Cache TTL in days
-cache_ttl_days = 30             # default: 30
+# Output directory for generated contract tests
+contract_test_dir = "tests/generated/"
 
-# Models for committee mode
-models = []
+# Property test iterations per function
+contract_test_iterations = 1000    # default: 1000
 
-# Agreement threshold for committee mode
-agreement_threshold = 2         # default: 2
+# Whether to check state machine verification
+state_machine_verification = true  # default: true
 
-[strict]
-# SMT solver timeout per verification condition
-smt_timeout_ms = 10000          # default: 10000
+# Whether to check layout verification
+layout_verification = true         # default: true
 
-# SMT solver memory limit
-smt_memory_limit_mb = 4096      # default: 4096
-
-# Whether to treat SMT timeout as error or warning
-timeout_is_error = false        # default: false
+# Whether to check interaction verification
+interaction_verification = true    # default: true
 
 [build]
-# Parity manifest output path
-manifest_path = "target/parity-manifest.json"
+# Verification manifest output path
+manifest_path = "target/verification-manifest.json"
 
-# Whether to generate parity manifest
-generate_manifest = true        # default: true
+# Whether to generate verification manifest
+generate_manifest = true           # default: true
 
 # Error output format
-error_format = "human"          # "human" | "json"
+error_format = "human"             # "human" | "json"
 ```
 
 ---
 
-## 6.15 Summary
+## 6.19 Summary
 
 | Aspect | Behavior |
 |--------|----------|
-| Structural parity | Mandatory, deterministic, no external dependencies |
-| Semantic parity | Optional, LLM-assisted, advisory by default, cached |
-| Static verification | SMT-based for `@strict`, optional per-function |
-| Block-level parity | Matches intent steps to implementation blocks |
-| Diagrammatic parity | State machine transitions verified against code |
-| Layout parity | UI regions verified for completeness and constraint satisfaction |
-| Interaction parity | UI interaction states verified for reachability and coverage |
-| Parity manifest | JSON record of all checks, generated with every build |
+| Preconditions (`requires:`) | SMT-verified at every call site |
+| Postconditions (`ensures:`) | SMT-verified at every return point, including per-error-variant |
+| Effects (`effects:`) | Inferred and checked as subset of declaration |
+| Invariants (`invariant:`) | SMT-verified after constructors and mutations |
+| Panic freedom (`panics: never`) | Statically proven via reachability analysis |
+| Refinement types | SMT-verified at assignment points |
+| State machines | Transitions verified against declaration |
+| Layouts | Region completeness and constraint satisfiability checked |
+| Interactions | State reachability and transition coverage checked |
+| Coverage | Every public function needs contracts or tests |
+| Test generation | Property tests generated mechanically from contracts |
+| Verification manifest | JSON record of all checks, generated with every build |
 | Incremental checking | Only changed functions and their dependents re-checked |
 | Error format | Edit-compatible with `old_string` / `new_string` suggestions |
-| Semantic diff | `monel diff` shows structural changes between versions |
-| Pipeline stages | Parse, Structural Parity, Static Verification, Semantic Parity, Code Generation, Bundling |
+| Semantic diff | `monel diff` shows contract and verification changes |
+| Pipeline stages | Parse, Static Verification, Code Generation, Bundling |

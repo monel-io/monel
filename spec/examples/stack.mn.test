@@ -1,0 +1,159 @@
+# Stack — contract-driven property tests
+# Auto-generated from contracts with: monel test --gen-contract-tests
+# Manual tests and LLM-generated tests follow below
+
+use std/test {assert, assert_eq, assert_ok, assert_err, assert_some, assert_none}
+
+# ─── Contract tests: fn new ───
+
+@test
+@property(iterations = 1000)
+fn contract_new_empty(capacity: Int)
+  requires: capacity > 0
+  let stack = new::<Int>(capacity)
+  assert_eq(stack.len, 0)
+  assert_eq(stack.capacity, capacity)
+
+# ─── Contract tests: fn push ───
+
+@test
+@property(iterations = 1000)
+fn contract_push_ok_increments_len(stack: Stack<Int>, val: Int)
+  requires: stack.len < stack.capacity
+  let old_len = stack.len
+  let result = push(stack, val)
+  assert_ok(result)
+  assert_eq(stack.len, old_len + 1)
+
+@test
+@property(iterations = 1000)
+fn contract_push_ok_sets_top(stack: Stack<Int>, val: Int)
+  requires: stack.len < stack.capacity
+  let result = push(stack, val)
+  assert_ok(result)
+  assert_eq(stack.peek(), Some(val))
+
+@test
+@property(iterations = 1000)
+fn contract_push_err_overflow_unchanged(stack: Stack<Int>, val: Int)
+  requires: stack.len == stack.capacity
+  let old_stack = stack.clone()
+  let result = push(stack, val)
+  assert_err(result)
+  assert_eq(stack, old_stack)
+
+# ─── Contract tests: fn pop ───
+
+@test
+@property(iterations = 1000)
+fn contract_pop_ok_decrements_len(stack: Stack<Int>)
+  requires: stack.len > 0
+  let old_len = stack.len
+  let result = pop(stack)
+  assert_ok(result)
+  assert_eq(stack.len, old_len - 1)
+
+@test
+@property(iterations = 1000)
+fn contract_pop_err_underflow_unchanged(stack: Stack<Int>)
+  requires: stack.len == 0
+  let old_stack = stack.clone()
+  let result = pop(stack)
+  assert_err(result)
+  assert_eq(stack, old_stack)
+
+# ─── Contract tests: fn peek ───
+
+@test
+@property(iterations = 1000)
+fn contract_peek_nonempty(stack: Stack<Int>)
+  requires: stack.len > 0
+  let result = peek(stack)
+  assert_some(result)
+
+@test
+@property(iterations = 1000)
+fn contract_peek_empty(stack: Stack<Int>)
+  requires: stack.len == 0
+  let result = peek(stack)
+  assert_none(result)
+
+# ─── Contract tests: fn clear ───
+
+@test
+@property(iterations = 1000)
+fn contract_clear_empties(stack: Stack<Int>)
+  let old_capacity = stack.capacity
+  clear(stack)
+  assert_eq(stack.len, 0)
+  assert_eq(stack.capacity, old_capacity)
+
+# ─── Invariant tests: type Stack<T> ───
+
+@test
+@property(iterations = 1000)
+fn invariant_stack_len_bounded(stack: Stack<Int>)
+  assert(stack.len <= stack.capacity)
+
+@test
+@property(iterations = 1000)
+fn invariant_stack_after_push(stack: Stack<Int>, val: Int)
+  requires: stack.len < stack.capacity
+  push(stack, val)
+  assert(stack.len <= stack.capacity)
+
+@test
+@property(iterations = 1000)
+fn invariant_stack_after_pop(stack: Stack<Int>)
+  requires: stack.len > 0
+  pop(stack)
+  assert(stack.len <= stack.capacity)
+
+# ─── Manual tests ───
+
+@test
+fn test_push_pop_roundtrip()
+  let stack = new::<Int>(10)
+  push(stack, 42)
+  push(stack, 99)
+  let top = pop(stack)
+  assert_eq(top, Ok(99))
+  let next = pop(stack)
+  assert_eq(next, Ok(42))
+  assert(is_empty(stack))
+
+@test
+fn test_capacity_one()
+  let stack = new::<String>(1)
+  assert_ok(push(stack, "hello"))
+  assert_err(push(stack, "world"))
+  assert_eq(pop(stack), Ok("hello"))
+  assert_err(pop(stack))
+
+# ─── LLM-generated tests (reviewed and committed) ───
+
+@test
+@property(iterations = 500)
+fn llm_push_pop_sequence_preserves_order(vals: Vec<Int>)
+  requires: vals.len <= 100
+  let stack = new::<Int>(vals.len + 1)
+  for v in vals
+    push(stack, v)
+  let mut popped = Vec.new()
+  while not is_empty(stack)
+    popped.push(pop(stack).unwrap())
+  popped.reverse()
+  assert_eq(popped, vals)
+
+@test
+fn llm_clear_then_reuse()
+  let stack = new::<Int>(5)
+  push(stack, 1)
+  push(stack, 2)
+  push(stack, 3)
+  clear(stack)
+  assert(is_empty(stack))
+  assert_eq(stack.capacity, 5)
+  push(stack, 10)
+  assert_eq(peek(stack), Some(10))
+  assert_eq(len(stack), 1)

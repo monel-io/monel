@@ -1,6 +1,6 @@
 # 12. Standard Library
 
-This chapter specifies the Monel standard library. The standard library is provided as modules — no types or functions are language primitives (except the syntax for literals, control flow, and the effect system, which are specified in earlier chapters). All standard library modules are self-hosting: they are written in Monel with their own intent layers, subject to the same parity verification as user code.
+This chapter specifies the Monel standard library. The standard library is provided as modules — no types or functions are language primitives (except the syntax for literals, control flow, and the effect system, which are specified in earlier chapters). All standard library modules are self-hosting: they are written in Monel with their own contracts, subject to the same parity verification as user code.
 
 ---
 
@@ -60,10 +60,8 @@ Provides fundamental I/O traits and types for reading and writing byte streams.
 ### 12.2.1 Core Traits
 
 ```
-intent trait Read
-  does: "a source of bytes that can be read from"
-
 trait Read
+  doc: "a source of bytes that can be read from"
   fn read(self: mut Self, buf: mut Array<Byte>) -> Result<Int, IoError> with Fs.read
   fn read_exact(self: mut Self, buf: mut Array<Byte>) -> Result<Unit, IoError> with Fs.read
   fn read_all(self: mut Self) -> Result<Vec<Byte>, IoError> with Fs.read
@@ -71,36 +69,32 @@ trait Read
 ```
 
 ```
-intent trait Write
-  does: "a destination for bytes that can be written to"
-
 trait Write
+  doc: "a destination for bytes that can be written to"
   fn write(self: mut Self, buf: Array<Byte>) -> Result<Int, IoError> with Fs.write
   fn write_all(self: mut Self, buf: Array<Byte>) -> Result<Unit, IoError> with Fs.write
   fn flush(self: mut Self) -> Result<Unit, IoError> with Fs.write
 ```
 
 ```
-intent trait Seek
-  does: "a byte stream that supports repositioning"
-
 trait Seek
+  doc: "a byte stream that supports repositioning"
   fn seek(self: mut Self, pos: SeekFrom) -> Result<Int, IoError> with Fs.read
 ```
 
 ### 12.2.2 Standard Streams
 
 ```
-intent fn stdin() -> Stdin
-  does: "returns a handle to the standard input stream"
+fn stdin() -> Stdin
+  doc: "returns a handle to the standard input stream"
   effects: []
 
-intent fn stdout() -> Stdout
-  does: "returns a handle to the standard output stream"
+fn stdout() -> Stdout
+  doc: "returns a handle to the standard output stream"
   effects: []
 
-intent fn stderr() -> Stderr
-  does: "returns a handle to the standard error stream"
+fn stderr() -> Stderr
+  doc: "returns a handle to the standard error stream"
   effects: []
 ```
 
@@ -109,15 +103,15 @@ intent fn stderr() -> Stderr
 ### 12.2.3 Buffered I/O
 
 ```
-intent struct BufReader<R: Read>
-  does: "wraps a reader with an internal buffer to reduce system calls"
+type BufReader<R: Read>
+  doc: "wraps a reader with an internal buffer to reduce system calls"
 
-intent fn BufReader.new(reader: R) -> BufReader<R>
-  does: "creates a buffered reader with default buffer size (8KB)"
+fn BufReader.new(reader: R) -> BufReader<R>
+  doc: "creates a buffered reader with default buffer size (8KB)"
   effects: []
 
-intent fn BufReader.with_capacity(reader: R, capacity: Int) -> BufReader<R>
-  does: "creates a buffered reader with the specified buffer size"
+fn BufReader.with_capacity(reader: R, capacity: Int) -> BufReader<R>
+  doc: "creates a buffered reader with the specified buffer size"
   effects: []
 
 impl BufReader<R: Read>
@@ -126,19 +120,19 @@ impl BufReader<R: Read>
 ```
 
 ```
-intent struct BufWriter<W: Write>
-  does: "wraps a writer with an internal buffer to reduce system calls"
+type BufWriter<W: Write>
+  doc: "wraps a writer with an internal buffer to reduce system calls"
 
-intent fn BufWriter.new(writer: W) -> BufWriter<W>
-  does: "creates a buffered writer with default buffer size (8KB)"
+fn BufWriter.new(writer: W) -> BufWriter<W>
+  doc: "creates a buffered writer with default buffer size (8KB)"
   effects: []
 ```
 
 ### 12.2.4 Utility Functions
 
 ```
-intent fn copy(reader: mut impl Read, writer: mut impl Write) -> Result<Int, IoError>
-  does: "copies all bytes from reader to writer, returns total bytes copied"
+fn copy(reader: mut impl Read, writer: mut impl Write) -> Result<Int, IoError>
+  doc: "copies all bytes from reader to writer, returns total bytes copied"
   effects: [Fs.read, Fs.write]
   panics: never
 ```
@@ -177,21 +171,21 @@ Provides filesystem operations. All functions carry the appropriate `Fs` effect.
 ### 12.3.1 File Type
 
 ```
-intent struct File
-  does: "an owned handle to an open file"
+type File
+  doc: "an owned handle to an open file"
 
-intent fn File.open(path: String) -> Result<File, IoError>
-  does: "opens a file for reading"
+fn File.open(path: String) -> Result<File, IoError>
+  doc: "opens a file for reading"
   effects: [Fs.read]
   panics: never
 
-intent fn File.create(path: String) -> Result<File, IoError>
-  does: "creates a file for writing, truncating if it exists"
+fn File.create(path: String) -> Result<File, IoError>
+  doc: "creates a file for writing, truncating if it exists"
   effects: [Fs.write]
   panics: never
 
-intent fn File.open_with(path: String, options: OpenOptions) -> Result<File, IoError>
-  does: "opens a file with the specified options"
+fn File.open_with(path: String, options: OpenOptions) -> Result<File, IoError>
+  doc: "opens a file with the specified options"
   effects: [Fs.read | Fs.write]
   panics: never
 
@@ -204,73 +198,73 @@ impl Drop for File
 ### 12.3.2 Filesystem Operations
 
 ```
-intent fn read_to_string(path: String) -> Result<String, IoError>
-  does: "reads the entire contents of a file as a UTF-8 string"
+fn read_to_string(path: String) -> Result<String, IoError>
+  doc: "reads the entire contents of a file as a UTF-8 string"
   effects: [Fs.read]
   panics: never
 
-intent fn read_bytes(path: String) -> Result<Vec<Byte>, IoError>
-  does: "reads the entire contents of a file as bytes"
+fn read_bytes(path: String) -> Result<Vec<Byte>, IoError>
+  doc: "reads the entire contents of a file as bytes"
   effects: [Fs.read]
   panics: never
 
-intent fn write(path: String, contents: Array<Byte>) -> Result<Unit, IoError>
-  does: "writes bytes to a file, creating it if it doesn't exist, truncating if it does"
+fn write(path: String, contents: Array<Byte>) -> Result<Unit, IoError>
+  doc: "writes bytes to a file, creating it if it doesn't exist, truncating if it does"
   effects: [Fs.write]
   panics: never
 
-intent fn write_string(path: String, contents: String) -> Result<Unit, IoError>
-  does: "writes a string to a file"
+fn write_string(path: String, contents: String) -> Result<Unit, IoError>
+  doc: "writes a string to a file"
   effects: [Fs.write]
   panics: never
 
-intent fn append(path: String, contents: Array<Byte>) -> Result<Unit, IoError>
-  does: "appends bytes to a file, creating it if it doesn't exist"
+fn append(path: String, contents: Array<Byte>) -> Result<Unit, IoError>
+  doc: "appends bytes to a file, creating it if it doesn't exist"
   effects: [Fs.write]
   panics: never
 
-intent fn copy(from: String, to: String) -> Result<Unit, IoError>
-  does: "copies a file from one path to another"
+fn copy(from: String, to: String) -> Result<Unit, IoError>
+  doc: "copies a file from one path to another"
   effects: [Fs.read, Fs.write]
   panics: never
 
-intent fn rename(from: String, to: String) -> Result<Unit, IoError>
-  does: "renames a file or directory"
+fn rename(from: String, to: String) -> Result<Unit, IoError>
+  doc: "renames a file or directory"
   effects: [Fs.write]
   panics: never
 
-intent fn remove(path: String) -> Result<Unit, IoError>
-  does: "removes a file"
+fn remove(path: String) -> Result<Unit, IoError>
+  doc: "removes a file"
   effects: [Fs.write]
   panics: never
 
-intent fn create_dir(path: String) -> Result<Unit, IoError>
-  does: "creates a directory"
+fn create_dir(path: String) -> Result<Unit, IoError>
+  doc: "creates a directory"
   effects: [Fs.write]
   panics: never
 
-intent fn create_dir_all(path: String) -> Result<Unit, IoError>
-  does: "creates a directory and all parent directories"
+fn create_dir_all(path: String) -> Result<Unit, IoError>
+  doc: "creates a directory and all parent directories"
   effects: [Fs.write]
   panics: never
 
-intent fn remove_dir(path: String) -> Result<Unit, IoError>
-  does: "removes an empty directory"
+fn remove_dir(path: String) -> Result<Unit, IoError>
+  doc: "removes an empty directory"
   effects: [Fs.write]
   panics: never
 
-intent fn remove_dir_all(path: String) -> Result<Unit, IoError>
-  does: "removes a directory and all its contents"
+fn remove_dir_all(path: String) -> Result<Unit, IoError>
+  doc: "removes a directory and all its contents"
   effects: [Fs.write]
   panics: never
 
-intent fn exists(path: String) -> Bool
-  does: "returns true if the path exists"
+fn exists(path: String) -> Bool
+  doc: "returns true if the path exists"
   effects: [Fs.read]
   panics: never
 
-intent fn metadata(path: String) -> Result<Metadata, IoError>
-  does: "returns metadata for a file or directory"
+fn metadata(path: String) -> Result<Metadata, IoError>
+  doc: "returns metadata for a file or directory"
   effects: [Fs.read]
   panics: never
 ```
@@ -278,13 +272,13 @@ intent fn metadata(path: String) -> Result<Metadata, IoError>
 ### 12.3.3 Directory Walking
 
 ```
-intent fn walk(path: String) -> Result<Walker, IoError>
-  does: "returns an iterator over directory entries, recursively"
+fn walk(path: String) -> Result<Walker, IoError>
+  doc: "returns an iterator over directory entries, recursively"
   effects: [Fs.read]
   panics: never
 
-intent fn read_dir(path: String) -> Result<DirEntries, IoError>
-  does: "returns an iterator over entries in a directory (non-recursive)"
+fn read_dir(path: String) -> Result<DirEntries, IoError>
+  doc: "returns an iterator over entries in a directory (non-recursive)"
   effects: [Fs.read]
   panics: never
 
@@ -318,11 +312,11 @@ Provides TCP and UDP networking. All operations carry the `Net` effect.
 ### 12.4.1 TCP
 
 ```
-intent struct TcpStream
-  does: "a TCP connection between a local and remote socket"
+type TcpStream
+  doc: "a TCP connection between a local and remote socket"
 
-intent fn TcpStream.connect(addr: String) -> Result<TcpStream, IoError>
-  does: "opens a TCP connection to the given address"
+fn TcpStream.connect(addr: String) -> Result<TcpStream, IoError>
+  doc: "opens a TCP connection to the given address"
   effects: [Net.connect]
   panics: never
 
@@ -330,21 +324,21 @@ impl Read for TcpStream
 impl Write for TcpStream
 impl Drop for TcpStream
 
-intent struct TcpListener
-  does: "a TCP socket server that listens for connections"
+type TcpListener
+  doc: "a TCP socket server that listens for connections"
 
-intent fn TcpListener.bind(addr: String) -> Result<TcpListener, IoError>
-  does: "binds a TCP listener to the given address"
+fn TcpListener.bind(addr: String) -> Result<TcpListener, IoError>
+  doc: "binds a TCP listener to the given address"
   effects: [Net.listen]
   panics: never
 
-intent fn TcpListener.accept(self: Self) -> Result<(TcpStream, SocketAddr), IoError>
-  does: "accepts a new incoming connection"
+fn TcpListener.accept(self: Self) -> Result<(TcpStream, SocketAddr), IoError>
+  doc: "accepts a new incoming connection"
   effects: [Net.accept]
   panics: never
 
-intent fn TcpListener.incoming(self: Self) -> Incoming
-  does: "returns an iterator over incoming connections"
+fn TcpListener.incoming(self: Self) -> Incoming
+  doc: "returns an iterator over incoming connections"
   effects: [Net.accept]
   panics: never
 ```
@@ -352,21 +346,21 @@ intent fn TcpListener.incoming(self: Self) -> Incoming
 ### 12.4.2 UDP
 
 ```
-intent struct UdpSocket
-  does: "a UDP socket"
+type UdpSocket
+  doc: "a UDP socket"
 
-intent fn UdpSocket.bind(addr: String) -> Result<UdpSocket, IoError>
-  does: "binds a UDP socket to the given address"
+fn UdpSocket.bind(addr: String) -> Result<UdpSocket, IoError>
+  doc: "binds a UDP socket to the given address"
   effects: [Net.listen]
   panics: never
 
-intent fn UdpSocket.send_to(self: Self, buf: Array<Byte>, addr: String) -> Result<Int, IoError>
-  does: "sends bytes to the given address"
+fn UdpSocket.send_to(self: Self, buf: Array<Byte>, addr: String) -> Result<Int, IoError>
+  doc: "sends bytes to the given address"
   effects: [Net.send]
   panics: never
 
-intent fn UdpSocket.recv_from(self: Self, buf: mut Array<Byte>) -> Result<(Int, SocketAddr), IoError>
-  does: "receives bytes and returns the sender's address"
+fn UdpSocket.recv_from(self: Self, buf: mut Array<Byte>) -> Result<(Int, SocketAddr), IoError>
+  doc: "receives bytes and returns the sender's address"
   effects: [Net.recv]
   panics: never
 ```
@@ -394,25 +388,25 @@ Provides HTTP client and server types. Built on `std/net` and `std/async`.
 ### 12.5.1 Client
 
 ```
-intent struct HttpClient
-  does: "an HTTP client for making requests"
+type HttpClient
+  doc: "an HTTP client for making requests"
 
-intent fn HttpClient.new() -> HttpClient
-  does: "creates a new HTTP client with default configuration"
+fn HttpClient.new() -> HttpClient
+  doc: "creates a new HTTP client with default configuration"
   effects: []
 
-intent fn HttpClient.get(self: Self, url: String) -> Result<Response, HttpError>
-  does: "sends an HTTP GET request"
+fn HttpClient.get(self: Self, url: String) -> Result<Response, HttpError>
+  doc: "sends an HTTP GET request"
   effects: [Net.connect, Net.send, Net.recv]
   panics: never
 
-intent fn HttpClient.post(self: Self, url: String, body: Array<Byte>) -> Result<Response, HttpError>
-  does: "sends an HTTP POST request with the given body"
+fn HttpClient.post(self: Self, url: String, body: Array<Byte>) -> Result<Response, HttpError>
+  doc: "sends an HTTP POST request with the given body"
   effects: [Net.connect, Net.send, Net.recv]
   panics: never
 
-intent fn HttpClient.request(self: Self, req: Request) -> Result<Response, HttpError>
-  does: "sends an arbitrary HTTP request"
+fn HttpClient.request(self: Self, req: Request) -> Result<Response, HttpError>
+  doc: "sends an arbitrary HTTP request"
   effects: [Net.connect, Net.send, Net.recv]
   panics: never
 ```
@@ -465,16 +459,16 @@ struct Headers
 ### 12.5.3 Server
 
 ```
-intent struct HttpServer
-  does: "an HTTP server that listens for and handles requests"
+type HttpServer
+  doc: "an HTTP server that listens for and handles requests"
 
-intent fn HttpServer.bind(addr: String) -> Result<HttpServer, HttpError>
-  does: "binds the server to the given address"
+fn HttpServer.bind(addr: String) -> Result<HttpServer, HttpError>
+  doc: "binds the server to the given address"
   effects: [Net.listen]
   panics: never
 
-intent fn HttpServer.serve(self: mut Self, handler: fn(Request) -> Response) -> Result<Unit, HttpError>
-  does: "starts serving requests, calling the handler for each"
+fn HttpServer.serve(self: mut Self, handler: fn(Request) -> Response) -> Result<Unit, HttpError>
+  doc: "starts serving requests, calling the handler for each"
   effects: [Net.accept, Net.send, Net.recv, Async]
   panics: never
 ```
@@ -488,33 +482,33 @@ Provides JSON serialization and deserialization.
 ### 12.6.1 Core Functions
 
 ```
-intent fn parse<T: Deserialize>(s: String) -> Result<T, JsonError>
-  does: "parses a JSON string into a value of type T"
+fn parse<T: Deserialize>(s: String) -> Result<T, JsonError>
+  doc: "parses a JSON string into a value of type T"
   effects: []
   panics: never
 
-intent fn parse_value(s: String) -> Result<JsonValue, JsonError>
-  does: "parses a JSON string into a dynamic JSON value"
+fn parse_value(s: String) -> Result<JsonValue, JsonError>
+  doc: "parses a JSON string into a dynamic JSON value"
   effects: []
   panics: never
 
-intent fn to_string<T: Serialize>(value: T) -> Result<String, JsonError>
-  does: "serializes a value to a compact JSON string"
+fn to_string<T: Serialize>(value: T) -> Result<String, JsonError>
+  doc: "serializes a value to a compact JSON string"
   effects: []
   panics: never
 
-intent fn to_string_pretty<T: Serialize>(value: T) -> Result<String, JsonError>
-  does: "serializes a value to a pretty-printed JSON string"
+fn to_string_pretty<T: Serialize>(value: T) -> Result<String, JsonError>
+  doc: "serializes a value to a pretty-printed JSON string"
   effects: []
   panics: never
 
-intent fn from_value<T: Deserialize>(value: JsonValue) -> Result<T, JsonError>
-  does: "converts a JsonValue into a typed value"
+fn from_value<T: Deserialize>(value: JsonValue) -> Result<T, JsonError>
+  doc: "converts a JsonValue into a typed value"
   effects: []
   panics: never
 
-intent fn to_value<T: Serialize>(value: T) -> Result<JsonValue, JsonError>
-  does: "converts a typed value into a JsonValue"
+fn to_value<T: Serialize>(value: T) -> Result<JsonValue, JsonError>
+  doc: "converts a typed value into a JsonValue"
   effects: []
   panics: never
 ```
@@ -544,16 +538,12 @@ impl JsonValue
 ### 12.6.3 Serialization Traits
 
 ```
-intent trait Serialize
-  does: "a type that can be serialized to JSON"
-
 trait Serialize
+  doc: "a type that can be serialized to JSON"
   fn serialize(self: Self, serializer: mut Serializer) -> Result<Unit, JsonError>
 
-intent trait Deserialize
-  does: "a type that can be deserialized from JSON"
-
 trait Deserialize
+  doc: "a type that can be deserialized from JSON"
   fn deserialize(deserializer: mut Deserializer) -> Result<Self, JsonError>
 ```
 
@@ -640,11 +630,11 @@ impl String
 ### 12.7.2 Regex
 
 ```
-intent struct Regex
-  does: "a compiled regular expression"
+type Regex
+  doc: "a compiled regular expression"
 
-intent fn Regex.new(pattern: String) -> Result<Regex, RegexError>
-  does: "compiles a regular expression pattern"
+fn Regex.new(pattern: String) -> Result<Regex, RegexError>
+  doc: "compiles a regular expression pattern"
   effects: []
   panics: never
 
@@ -671,8 +661,8 @@ struct Captures
 ### 12.7.3 String Formatting
 
 ```
-intent fn format(template: String, args: ...) -> String
-  does: "formats a string using positional or named arguments"
+fn format(template: String, args: ...) -> String
+  doc: "formats a string using positional or named arguments"
   effects: []
   panics: "if format string is invalid or argument count mismatches"
 ```
@@ -765,8 +755,8 @@ impl Int
 ### 12.9.1 Core Types
 
 ```
-intent struct Duration
-  does: "a span of time with nanosecond precision"
+type Duration
+  doc: "a span of time with nanosecond precision"
 
 impl Duration
   fn from_secs(secs: UInt64) -> Duration
@@ -795,11 +785,11 @@ let very_long = 2h
 ```
 
 ```
-intent struct Instant
-  does: "a monotonic timestamp for measuring elapsed time"
+type Instant
+  doc: "a monotonic timestamp for measuring elapsed time"
 
-intent fn Instant.now() -> Instant
-  does: "returns the current monotonic time"
+fn Instant.now() -> Instant
+  doc: "returns the current monotonic time"
   effects: [Time.now]
 
 impl Instant
@@ -810,11 +800,11 @@ impl Instant
 ```
 
 ```
-intent struct Clock
-  does: "a wall-clock timestamp (not monotonic, subject to NTP adjustments)"
+type Clock
+  doc: "a wall-clock timestamp (not monotonic, subject to NTP adjustments)"
 
-intent fn Clock.now() -> Clock
-  does: "returns the current wall-clock time"
+fn Clock.now() -> Clock
+  doc: "returns the current wall-clock time"
   effects: [Time.now]
 
 impl Clock
@@ -833,16 +823,16 @@ impl Clock
 ### 12.9.2 Timers
 
 ```
-intent fn sleep(duration: Duration) -> Unit
-  does: "suspends the current task for the given duration"
+fn sleep(duration: Duration) -> Unit
+  doc: "suspends the current task for the given duration"
   effects: [Time.sleep, Async]
 
-intent fn interval(period: Duration) -> Interval
-  does: "creates a repeating interval timer"
+fn interval(period: Duration) -> Interval
+  doc: "creates a repeating interval timer"
   effects: [Time.now]
 
-intent fn timeout<T>(duration: Duration, future: impl Future<T>) -> Result<T, TimeoutError>
-  does: "wraps a future with a timeout, returning TimeoutError if it exceeds the duration"
+fn timeout<T>(duration: Duration, future: impl Future<T>) -> Result<T, TimeoutError>
+  doc: "wraps a future with a timeout, returning TimeoutError if it exceeds the duration"
   effects: [Time.now, Async]
 ```
 
@@ -855,8 +845,8 @@ Beyond the core `Vec`, `Map`, and `Set`, this module provides specialized collec
 ### 12.10.1 Ordered Collections
 
 ```
-intent struct BTreeMap<K: Ord, V>
-  does: "a sorted map implemented as a B-tree"
+type BTreeMap<K: Ord, V>
+  doc: "a sorted map implemented as a B-tree"
 
 impl BTreeMap<K: Ord, V>
   fn new() -> BTreeMap<K, V>
@@ -873,8 +863,8 @@ impl BTreeMap<K: Ord, V>
 ```
 
 ```
-intent struct BTreeSet<T: Ord>
-  does: "a sorted set implemented as a B-tree"
+type BTreeSet<T: Ord>
+  doc: "a sorted set implemented as a B-tree"
 
 impl BTreeSet<T: Ord>
   fn new() -> BTreeSet<T>
@@ -892,8 +882,8 @@ impl BTreeSet<T: Ord>
 ### 12.10.2 Double-Ended Queue
 
 ```
-intent struct Deque<T>
-  does: "a double-ended queue implemented as a ring buffer"
+type Deque<T>
+  doc: "a double-ended queue implemented as a ring buffer"
 
 impl Deque<T>
   fn new() -> Deque<T>
@@ -911,8 +901,8 @@ impl Deque<T>
 ### 12.10.3 Linked List
 
 ```
-intent struct LinkedList<T>
-  does: "a doubly-linked list"
+type LinkedList<T>
+  doc: "a doubly-linked list"
 
 impl LinkedList<T>
   fn new() -> LinkedList<T>
@@ -928,8 +918,8 @@ impl LinkedList<T>
 ### 12.10.4 Priority Queue
 
 ```
-intent struct PriorityQueue<T: Ord>
-  does: "a max-heap priority queue"
+type PriorityQueue<T: Ord>
+  doc: "a max-heap priority queue"
 
 impl PriorityQueue<T: Ord>
   fn new() -> PriorityQueue<T>
@@ -995,19 +985,19 @@ Synchronization primitives for concurrent programming.
 ### 12.11.1 Mutex
 
 ```
-intent struct Mutex<T>
-  does: "a mutual exclusion lock protecting shared data"
+type Mutex<T>
+  doc: "a mutual exclusion lock protecting shared data"
 
-intent fn Mutex.new(value: T) -> Mutex<T>
-  does: "creates a new mutex wrapping the given value"
+fn Mutex.new(value: T) -> Mutex<T>
+  doc: "creates a new mutex wrapping the given value"
   effects: []
 
-intent fn Mutex.lock(self: Self) -> MutexGuard<T>
-  does: "acquires the lock, blocking until it is available"
+fn Mutex.lock(self: Self) -> MutexGuard<T>
+  doc: "acquires the lock, blocking until it is available"
   effects: [Sync.lock]
 
-intent fn Mutex.try_lock(self: Self) -> Option<MutexGuard<T>>
-  does: "attempts to acquire the lock without blocking"
+fn Mutex.try_lock(self: Self) -> Option<MutexGuard<T>>
+  doc: "attempts to acquire the lock without blocking"
   effects: [Sync.lock]
 
 struct MutexGuard<T>
@@ -1017,27 +1007,27 @@ struct MutexGuard<T>
 ### 12.11.2 Read-Write Lock
 
 ```
-intent struct RwLock<T>
-  does: "a reader-writer lock allowing multiple readers or a single writer"
+type RwLock<T>
+  doc: "a reader-writer lock allowing multiple readers or a single writer"
 
-intent fn RwLock.new(value: T) -> RwLock<T>
-  does: "creates a new read-write lock wrapping the given value"
+fn RwLock.new(value: T) -> RwLock<T>
+  doc: "creates a new read-write lock wrapping the given value"
   effects: []
 
-intent fn RwLock.read(self: Self) -> RwLockReadGuard<T>
-  does: "acquires a read lock, blocking until no writer holds the lock"
+fn RwLock.read(self: Self) -> RwLockReadGuard<T>
+  doc: "acquires a read lock, blocking until no writer holds the lock"
   effects: [Sync.lock]
 
-intent fn RwLock.write(self: Self) -> RwLockWriteGuard<T>
-  does: "acquires a write lock, blocking until no reader or writer holds the lock"
+fn RwLock.write(self: Self) -> RwLockWriteGuard<T>
+  doc: "acquires a write lock, blocking until no reader or writer holds the lock"
   effects: [Sync.lock]
 ```
 
 ### 12.11.3 Atomics
 
 ```
-intent struct Atomic<T>
-  does: "an atomically-accessible value"
+type Atomic<T>
+  doc: "an atomically-accessible value"
 
 impl Atomic<T>
   fn new(value: T) -> Atomic<T>
@@ -1061,16 +1051,16 @@ enum Ordering
 ### 12.11.4 Channels
 
 ```
-intent fn channel<T>() -> (Sender<T>, Receiver<T>)
-  does: "creates an unbounded MPSC channel"
+fn channel<T>() -> (Sender<T>, Receiver<T>)
+  doc: "creates an unbounded MPSC channel"
   effects: []
 
-intent fn bounded_channel<T>(capacity: Int) -> (Sender<T>, Receiver<T>)
-  does: "creates a bounded MPSC channel with the given capacity"
+fn bounded_channel<T>(capacity: Int) -> (Sender<T>, Receiver<T>)
+  doc: "creates a bounded MPSC channel with the given capacity"
   effects: []
 
-intent struct Sender<T>
-  does: "the sending half of a channel"
+type Sender<T>
+  doc: "the sending half of a channel"
 
 impl Sender<T>
   fn send(self: Self, value: T) -> Result<Unit, SendError<T>>
@@ -1079,8 +1069,8 @@ impl Sender<T>
 
 impl Clone for Sender<T>  // multiple senders allowed
 
-intent struct Receiver<T>
-  does: "the receiving half of a channel"
+type Receiver<T>
+  doc: "the receiving half of a channel"
 
 impl Receiver<T>
   fn recv(self: Self) -> Result<T, RecvError>
@@ -1091,16 +1081,16 @@ impl Receiver<T>
 ### 12.11.5 Once
 
 ```
-intent struct Once
-  does: "a synchronization primitive for one-time initialization"
+type Once
+  doc: "a synchronization primitive for one-time initialization"
 
 impl Once
   fn new() -> Once
   fn call_once(self: Self, f: fn() -> Unit)
   fn is_completed(self: Self) -> Bool
 
-intent struct OnceCell<T>
-  does: "a cell that can be written to exactly once"
+type OnceCell<T>
+  doc: "a cell that can be written to exactly once"
 
 impl OnceCell<T>
   fn new() -> OnceCell<T>
@@ -1118,32 +1108,32 @@ Provides the async runtime, task spawning, and event loop integration.
 ### 12.12.1 Core Types
 
 ```
-intent struct Runtime
-  does: "the async runtime that drives task execution"
+type Runtime
+  doc: "the async runtime that drives task execution"
 
-intent fn Runtime.new() -> Result<Runtime, IoError>
-  does: "creates a new async runtime with default configuration"
+fn Runtime.new() -> Result<Runtime, IoError>
+  doc: "creates a new async runtime with default configuration"
   effects: [unsafe]
   panics: never
 
-intent fn Runtime.block_on<T>(self: mut Self, future: impl Future<T>) -> T
-  does: "runs a future to completion on the runtime, blocking the current thread"
+fn Runtime.block_on<T>(self: mut Self, future: impl Future<T>) -> T
+  doc: "runs a future to completion on the runtime, blocking the current thread"
   effects: [Async]
 ```
 
 ### 12.12.2 Task Spawning
 
 ```
-intent fn spawn<T>(future: impl Future<T>) -> JoinHandle<T>
-  does: "spawns a new async task on the runtime"
+fn spawn<T>(future: impl Future<T>) -> JoinHandle<T>
+  doc: "spawns a new async task on the runtime"
   effects: [Async]
 
-intent fn spawn_blocking<T>(f: fn() -> T) -> JoinHandle<T>
-  does: "runs a blocking function on a dedicated thread pool"
+fn spawn_blocking<T>(f: fn() -> T) -> JoinHandle<T>
+  doc: "runs a blocking function on a dedicated thread pool"
   effects: [Async]
 
-intent struct JoinHandle<T>
-  does: "a handle to a spawned task, can be awaited for its result"
+type JoinHandle<T>
+  doc: "a handle to a spawned task, can be awaited for its result"
 
 impl JoinHandle<T>
   fn await(self) -> Result<T, JoinError>
@@ -1154,8 +1144,8 @@ impl JoinHandle<T>
 ### 12.12.3 Select
 
 ```
-intent macro select
-  does: "waits on multiple futures simultaneously, completing when the first resolves"
+macro select
+  doc: "waits on multiple futures simultaneously, completing when the first resolves"
 ```
 
 ```
@@ -1171,11 +1161,11 @@ select
 ### 12.12.4 Event Loop
 
 ```
-intent struct EventLoop
-  does: "a low-level event loop for I/O multiplexing"
+type EventLoop
+  doc: "a low-level event loop for I/O multiplexing"
 
-intent fn EventLoop.new() -> Result<EventLoop, IoError>
-  does: "creates a new event loop backed by epoll (Linux) or kqueue (macOS)"
+fn EventLoop.new() -> Result<EventLoop, IoError>
+  doc: "creates a new event loop backed by epoll (Linux) or kqueue (macOS)"
   effects: [unsafe]
   panics: never
 
@@ -1214,23 +1204,23 @@ Provides hashing, encryption, and signing primitives.
 ### 12.13.1 Hashing
 
 ```
-intent fn hash_sha256(data: Array<Byte>) -> Array<Byte, 32>
-  does: "computes the SHA-256 hash of the given data"
+fn hash_sha256(data: Array<Byte>) -> Array<Byte, 32>
+  doc: "computes the SHA-256 hash of the given data"
   effects: [Crypto]
   panics: never
 
-intent fn hash_sha512(data: Array<Byte>) -> Array<Byte, 64>
-  does: "computes the SHA-512 hash of the given data"
+fn hash_sha512(data: Array<Byte>) -> Array<Byte, 64>
+  doc: "computes the SHA-512 hash of the given data"
   effects: [Crypto]
   panics: never
 
-intent fn hash_blake3(data: Array<Byte>) -> Array<Byte, 32>
-  does: "computes the BLAKE3 hash of the given data"
+fn hash_blake3(data: Array<Byte>) -> Array<Byte, 32>
+  doc: "computes the BLAKE3 hash of the given data"
   effects: [Crypto]
   panics: never
 
-intent struct Hasher
-  does: "an incremental hash computation"
+type Hasher
+  doc: "an incremental hash computation"
 
 impl Hasher
   fn new(algorithm: HashAlgorithm) -> Hasher
@@ -1247,13 +1237,13 @@ enum HashAlgorithm
 ### 12.13.2 Encryption
 
 ```
-intent fn encrypt_aes_gcm(key: Array<Byte>, nonce: Array<Byte>, plaintext: Array<Byte>, aad: Array<Byte>) -> Result<Vec<Byte>, CryptoError>
-  does: "encrypts data using AES-256-GCM"
+fn encrypt_aes_gcm(key: Array<Byte>, nonce: Array<Byte>, plaintext: Array<Byte>, aad: Array<Byte>) -> Result<Vec<Byte>, CryptoError>
+  doc: "encrypts data using AES-256-GCM"
   effects: [Crypto]
   panics: never
 
-intent fn decrypt_aes_gcm(key: Array<Byte>, nonce: Array<Byte>, ciphertext: Array<Byte>, aad: Array<Byte>) -> Result<Vec<Byte>, CryptoError>
-  does: "decrypts data using AES-256-GCM"
+fn decrypt_aes_gcm(key: Array<Byte>, nonce: Array<Byte>, ciphertext: Array<Byte>, aad: Array<Byte>) -> Result<Vec<Byte>, CryptoError>
+  doc: "decrypts data using AES-256-GCM"
   effects: [Crypto]
   panics: never
 ```
@@ -1261,13 +1251,13 @@ intent fn decrypt_aes_gcm(key: Array<Byte>, nonce: Array<Byte>, ciphertext: Arra
 ### 12.13.3 Signing
 
 ```
-intent fn sign_ed25519(private_key: Array<Byte>, message: Array<Byte>) -> Result<Array<Byte, 64>, CryptoError>
-  does: "signs a message using Ed25519"
+fn sign_ed25519(private_key: Array<Byte>, message: Array<Byte>) -> Result<Array<Byte, 64>, CryptoError>
+  doc: "signs a message using Ed25519"
   effects: [Crypto]
   panics: never
 
-intent fn verify_ed25519(public_key: Array<Byte>, message: Array<Byte>, signature: Array<Byte>) -> Result<Bool, CryptoError>
-  does: "verifies an Ed25519 signature"
+fn verify_ed25519(public_key: Array<Byte>, message: Array<Byte>, signature: Array<Byte>) -> Result<Bool, CryptoError>
+  doc: "verifies an Ed25519 signature"
   effects: [Crypto]
   panics: never
 ```
@@ -1275,13 +1265,13 @@ intent fn verify_ed25519(public_key: Array<Byte>, message: Array<Byte>, signatur
 ### 12.13.4 Random
 
 ```
-intent fn random_bytes(len: Int) -> Vec<Byte>
-  does: "generates cryptographically secure random bytes"
+fn random_bytes(len: Int) -> Vec<Byte>
+  doc: "generates cryptographically secure random bytes"
   effects: [Crypto, Random]
   panics: never
 
-intent fn random_int(min: Int, max: Int) -> Int
-  does: "generates a random integer in the range [min, max)"
+fn random_int(min: Int, max: Int) -> Int
+  doc: "generates a random integer in the range [min, max)"
   effects: [Random]
   panics: "if min >= max"
 ```
@@ -1291,42 +1281,42 @@ intent fn random_int(min: Int, max: Int) -> Int
 ## 12.14 `std/env` — Environment
 
 ```
-intent fn var(name: String) -> Result<String, EnvError>
-  does: "returns the value of an environment variable"
+fn var(name: String) -> Result<String, EnvError>
+  doc: "returns the value of an environment variable"
   effects: [Env.read]
   panics: never
 
-intent fn var_or(name: String, default: String) -> String
-  does: "returns the value of an environment variable, or the default if not set"
+fn var_or(name: String, default: String) -> String
+  doc: "returns the value of an environment variable, or the default if not set"
   effects: [Env.read]
   panics: never
 
-intent fn set_var(name: String, value: String)
-  does: "sets an environment variable"
+fn set_var(name: String, value: String)
+  doc: "sets an environment variable"
   effects: [Env.write]
 
-intent fn remove_var(name: String)
-  does: "removes an environment variable"
+fn remove_var(name: String)
+  doc: "removes an environment variable"
   effects: [Env.write]
 
-intent fn vars() -> Iterator<Item = (String, String)>
-  does: "returns an iterator over all environment variables"
+fn vars() -> Iterator<Item = (String, String)>
+  doc: "returns an iterator over all environment variables"
   effects: [Env.read]
 
-intent fn args() -> Vec<String>
-  does: "returns the command-line arguments"
+fn args() -> Vec<String>
+  doc: "returns the command-line arguments"
   effects: [Env.read]
 
-intent fn current_dir() -> Result<String, IoError>
-  does: "returns the current working directory"
+fn current_dir() -> Result<String, IoError>
+  doc: "returns the current working directory"
   effects: [Fs.read]
 
-intent fn home_dir() -> Option<String>
-  does: "returns the user's home directory"
+fn home_dir() -> Option<String>
+  doc: "returns the user's home directory"
   effects: [Env.read]
 
-intent fn temp_dir() -> String
-  does: "returns the system's temporary directory"
+fn temp_dir() -> String
+  doc: "returns the system's temporary directory"
   effects: [Env.read]
 ```
 
@@ -1335,11 +1325,11 @@ intent fn temp_dir() -> String
 ## 12.15 `std/process` — Process Management
 
 ```
-intent struct Command
-  does: "a builder for spawning child processes"
+type Command
+  doc: "a builder for spawning child processes"
 
-intent fn Command.new(program: String) -> Command
-  does: "creates a new command for the given program"
+fn Command.new(program: String) -> Command
+  doc: "creates a new command for the given program"
   effects: []
 
 impl Command
@@ -1351,18 +1341,18 @@ impl Command
   fn stdout(self: mut Self, cfg: Stdio) -> mut Self
   fn stderr(self: mut Self, cfg: Stdio) -> mut Self
 
-intent fn Command.spawn(self: mut Self) -> Result<Child, IoError>
-  does: "spawns the process without waiting for it to complete"
+fn Command.spawn(self: mut Self) -> Result<Child, IoError>
+  doc: "spawns the process without waiting for it to complete"
   effects: [Process.spawn]
   panics: never
 
-intent fn Command.output(self: mut Self) -> Result<Output, IoError>
-  does: "spawns the process and waits for it, collecting all output"
+fn Command.output(self: mut Self) -> Result<Output, IoError>
+  doc: "spawns the process and waits for it, collecting all output"
   effects: [Process.spawn, Process.wait]
   panics: never
 
-intent fn Command.status(self: mut Self) -> Result<ExitStatus, IoError>
-  does: "spawns the process and waits for it, returning its exit status"
+fn Command.status(self: mut Self) -> Result<ExitStatus, IoError>
+  doc: "spawns the process and waits for it, returning its exit status"
   effects: [Process.spawn, Process.wait]
   panics: never
 
@@ -1400,13 +1390,13 @@ Terminal-specific I/O for building terminal applications.
 ### 12.16.1 Terminal Control
 
 ```
-intent fn size() -> Result<TermSize, IoError>
-  does: "returns the current terminal size in rows and columns"
+fn size() -> Result<TermSize, IoError>
+  doc: "returns the current terminal size in rows and columns"
   effects: [Fs.read, unsafe]
   panics: never
 
-intent fn enable_raw_mode() -> Result<RawModeGuard, IoError>
-  does: "enables raw mode for stdin (no echo, no line buffering)"
+fn enable_raw_mode() -> Result<RawModeGuard, IoError>
+  doc: "enables raw mode for stdin (no echo, no line buffering)"
   effects: [Fs.write, unsafe]
   panics: never
 
@@ -1423,8 +1413,8 @@ struct TermSize
 ### 12.16.2 ANSI Escape Codes
 
 ```
-intent module terminal/ansi
-  does: "ANSI escape code generation for terminal formatting"
+module terminal/ansi
+  doc: "ANSI escape code generation for terminal formatting"
 
 fn cursor_to(row: Int, col: Int) -> String
 fn cursor_up(n: Int) -> String
@@ -1461,8 +1451,8 @@ fn disable_bracketed_paste() -> String
 ### 12.16.3 Input Parsing
 
 ```
-intent fn read_event(timeout: Option<Duration>) -> Result<Option<InputEvent>, IoError>
-  does: "reads a single input event from stdin, with optional timeout"
+fn read_event(timeout: Option<Duration>) -> Result<Option<InputEvent>, IoError>
+  doc: "reads a single input event from stdin, with optional timeout"
   effects: [Fs.read, unsafe]
   panics: never
 
@@ -1538,11 +1528,11 @@ GPU rendering abstractions for terminal and editor applications. See [Chapter 10
 ### 12.17.1 Renderer
 
 ```
-intent struct Renderer
-  does: "manages the rendering pipeline and backend selection"
+type Renderer
+  doc: "manages the rendering pipeline and backend selection"
 
-intent fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
-  does: "initializes the renderer, selecting GPU or CPU backend"
+fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
+  doc: "initializes the renderer, selecting GPU or CPU backend"
   effects: [unsafe, Gpu]
   panics: never
 
@@ -1574,8 +1564,8 @@ struct RenderMetrics
 ### 12.17.2 Scene and Surfaces
 
 ```
-intent struct Scene
-  does: "a retained-mode scene graph describing what to render"
+type Scene
+  doc: "a retained-mode scene graph describing what to render"
 
 impl Scene
   fn new() -> Scene
@@ -1584,8 +1574,8 @@ impl Scene
   fn get_surface(self: Self, id: SurfaceId) -> Option<Surface>
   fn get_surface_mut(self: mut Self, id: SurfaceId) -> Option<mut Surface>
 
-intent struct Surface
-  does: "a rectangular grid of cells (for terminal rendering)"
+type Surface
+  doc: "a rectangular grid of cells (for terminal rendering)"
 
 impl Surface
   fn new(rows: Int, cols: Int) -> Surface
@@ -1650,11 +1640,11 @@ enum CursorShape
 ### 12.17.4 Font Management
 
 ```
-intent struct Font
-  does: "a loaded font for glyph rasterization"
+type Font
+  doc: "a loaded font for glyph rasterization"
 
-intent fn Font.load(config: FontConfig) -> Result<Font, FontError>
-  does: "loads a font from the system or a file path"
+fn Font.load(config: FontConfig) -> Result<Font, FontError>
+  doc: "loads a font from the system or a file path"
   effects: [Fs.read]
   panics: never
 
@@ -1760,7 +1750,114 @@ trait Arbitrary
 
 Monel derives `Arbitrary` automatically for types composed of types that implement `Arbitrary`. All primitive types, `String`, `Vec<T>`, `Option<T>`, and `Result<T, E>` implement `Arbitrary` by default.
 
-### 12.19.4 Test Fixtures
+### 12.19.4 Contract-Driven Test Generation
+
+The compiler can mechanically generate property-based tests from function contracts. Given:
+
+```
+fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
+  ensures:
+    ok => self.len == old(self.len) + 1
+    ok => self.peek() == Some(val)
+    err(Overflow) => self == old(self)
+```
+
+Running `monel test --gen-contract-tests` generates and saves to `stack.mn.test`:
+
+```
+# auto-generated from contracts for fn push
+# regenerate with: monel test --gen-contract-tests
+
+@test
+@property(iterations = 1000)
+fn contract_push_ok_increments_len(stack: Stack<Int>, val: Int)
+  requires: stack.len < stack.capacity
+  let old_len = stack.len
+  let result = push(stack, val)
+  assert_ok(result)
+  assert_eq(stack.len, old_len + 1)
+
+@test
+@property(iterations = 1000)
+fn contract_push_ok_sets_top(stack: Stack<Int>, val: Int)
+  requires: stack.len < stack.capacity
+  let result = push(stack, val)
+  assert_ok(result)
+  assert_eq(stack.peek(), Some(val))
+
+@test
+@property(iterations = 1000)
+fn contract_push_err_overflow_unchanged(stack: Stack<Int>, val: Int)
+  requires: stack.len == stack.capacity
+  let old_stack = stack.clone()
+  let result = push(stack, val)
+  assert_err(result)
+  assert_eq(stack, old_stack)
+```
+
+Each `ensures:` clause becomes a separate test. Conditional postconditions (`ok =>`, `err(Variant) =>`) generate tests with appropriate `requires:` guards that set up the success or failure scenario.
+
+**How it works:**
+
+1. The compiler reads each function's contracts.
+2. For each `ensures:` clause, it generates a `@property` test function:
+   - `ok => predicate` → test with inputs satisfying all `requires:` and preconditions for the success path
+   - `err(Variant) => predicate` → test with inputs that trigger the specific error variant
+   - Unconditional `predicate` → test with arbitrary valid inputs
+3. `old(expr)` references are captured before the function call.
+4. Type invariants generate additional tests verifying the invariant holds after every public method.
+5. Generated tests are written to `.mn.test` files and committed to the repository.
+
+**Generated tests are deterministic artifacts.** Once generated, they run without any LLM or external tool. They can be reviewed, modified, and versioned like any other code.
+
+**Relationship to SMT verification:**
+
+| Contract verification | Mechanism | Coverage |
+|---|---|---|
+| SMT (Z3) | Proves contracts hold for **all** inputs | Complete but may timeout on complex properties |
+| Generated property tests | Validates contracts for **sampled** inputs | Incomplete but catches implementation bugs SMT misses (e.g., integer overflow at specific values) |
+
+Both run during `monel build`. SMT provides proof; property tests provide empirical validation. They complement each other — SMT catches logical errors, property tests catch implementation bugs (off-by-one, overflow, edge cases in library calls).
+
+### 12.19.5 LLM-Assisted Test Generation
+
+Beyond contract-driven tests, an LLM can generate additional tests that cover scenarios the contracts don't specify:
+
+```
+monel test --gen-llm-tests src/auth.mn
+```
+
+The LLM reads the function's contracts, implementation, and types, then generates tests for:
+- Edge cases the contracts don't cover (empty strings, max-int values, unicode, concurrent access)
+- Integration scenarios (sequences of operations that together violate invariants)
+- Regression patterns (common bug patterns for the function's effect profile)
+
+Generated tests are saved to `.mn.test` and must be reviewed before committing:
+
+```
+monel test --gen-llm-tests src/auth.mn
+  Generated 8 tests for fn authenticate
+  Generated 3 tests for fn handle_request
+  Written to src/auth.mn.test
+
+  Review with: monel diff src/auth.mn.test
+```
+
+**The LLM is in the authoring loop, not the verification loop.** Once generated and committed, the tests run deterministically on every build. The LLM is never invoked during `monel build` or `monel test`. If the LLM generates a bad test, the developer deletes it. If it generates a good test, it becomes a permanent regression guard.
+
+**Pipeline summary:**
+
+```
+Contracts (in .mn files)
+  │
+  ├── SMT verification ──────────── proves for all inputs (compile time)
+  ├── Contract-driven prop tests ── validates empirically (test time)
+  └── LLM-generated tests ───────── catches what contracts miss (authored once, runs forever)
+        │
+        └── saved to .mn.test (deterministic, committed, reviewed)
+```
+
+### 12.19.6 Test Fixtures
 
 ```
 @test
@@ -1777,24 +1874,21 @@ fn destroy_test_db(db: TestDb)
   // teardown logic
 ```
 
-### 12.19.5 Test Utilities
+### 12.19.7 Test Utilities
 
 ```
-intent struct MockServer
-  does: "an HTTP mock server for testing"
+type MockServer
+  # HTTP mock server for testing
 
-impl MockServer
-  fn new() -> MockServer
-  fn mock(self: mut Self, method: Method, path: String, response: Response) -> mut Self
-  fn url(self: Self) -> String
-  fn assert_called(self: Self, method: Method, path: String, times: Int)
+fn MockServer.new() -> MockServer
+fn MockServer.mock(self: mut Self, method: Method, path: String, response: Response) -> mut Self
+fn MockServer.url(self: Self) -> String
+fn MockServer.assert_called(self: Self, method: Method, path: String, times: Int)
 
-intent fn with_temp_dir(f: fn(String) -> Unit)
-  does: "creates a temporary directory, runs f with its path, then removes it"
+fn with_temp_dir(f: fn(String) -> Unit) -> Unit
   effects: [Fs.write]
 
-intent fn with_env_var(name: String, value: String, f: fn() -> Unit)
-  does: "sets an environment variable for the duration of f, then restores it"
+fn with_env_var(name: String, value: String, f: fn() -> Unit) -> Unit
   effects: [Env.read, Env.write]
 ```
 
@@ -1812,8 +1906,8 @@ enum LogLevel
   Warn
   Error
 
-intent fn log(level: LogLevel, message: String, fields: Map<String, String>)
-  does: "emits a structured log entry"
+fn log(level: LogLevel, message: String, fields: Map<String, String>)
+  doc: "emits a structured log entry"
   effects: [Log]
 
 // Convenience macros/functions
@@ -1827,16 +1921,16 @@ fn error(message: String)
 fn info_with(message: String, fields: Map<String, String>)
 fn error_with(message: String, fields: Map<String, String>)
 
-intent fn set_level(level: LogLevel)
-  does: "sets the minimum log level for output"
+fn set_level(level: LogLevel)
+  doc: "sets the minimum log level for output"
   effects: [Log]
 
-intent fn set_output(writer: impl Write)
-  does: "sets the log output destination"
+fn set_output(writer: impl Write)
+  doc: "sets the log output destination"
   effects: [Log]
 
-intent fn set_format(formatter: fn(LogEntry) -> String)
-  does: "sets a custom log format function"
+fn set_format(formatter: fn(LogEntry) -> String)
+  doc: "sets a custom log format function"
   effects: [Log]
 
 struct LogEntry
@@ -1858,16 +1952,12 @@ Formatting traits and utilities.
 ### 12.21.1 Display and Debug
 
 ```
-intent trait Display
-  does: "human-readable text representation of a value"
-
 trait Display
+  doc: "human-readable text representation of a value"
   fn fmt(self: Self, f: mut Formatter) -> Result<Unit, FmtError>
 
-intent trait Debug
-  does: "debug/programmer-oriented text representation of a value"
-
 trait Debug
+  doc: "debug/programmer-oriented text representation of a value"
   fn fmt(self: Self, f: mut Formatter) -> Result<Unit, FmtError>
 ```
 
@@ -1926,10 +2016,8 @@ Iterator traits and combinators.
 ### 12.22.1 Core Trait
 
 ```
-intent trait Iterator
-  does: "a sequence of values that can be consumed one at a time"
-
 trait Iterator
+  doc: "a sequence of values that can be consumed one at a time"
   type Item
   fn next(self: mut Self) -> Option<Self.Item>
 
@@ -2011,40 +2099,40 @@ let map: Map<String, Int> = entries.iter().map(|e| (e.name.clone(), e.value)).co
 Low-level memory utilities. Most operations require the `unsafe` effect.
 
 ```
-intent fn size_of<T>() -> Int
-  does: "returns the size of type T in bytes"
+fn size_of<T>() -> Int
+  doc: "returns the size of type T in bytes"
   effects: []
 
-intent fn align_of<T>() -> Int
-  does: "returns the alignment of type T in bytes"
+fn align_of<T>() -> Int
+  doc: "returns the alignment of type T in bytes"
   effects: []
 
-intent fn swap<T>(a: mut T, b: mut T)
-  does: "swaps the values at two mutable references"
+fn swap<T>(a: mut T, b: mut T)
+  doc: "swaps the values at two mutable references"
   effects: []
 
-intent fn replace<T>(dest: mut T, value: T) -> T
-  does: "replaces the value at dest, returning the old value"
+fn replace<T>(dest: mut T, value: T) -> T
+  doc: "replaces the value at dest, returning the old value"
   effects: []
 
-intent fn take<T: Default>(dest: mut T) -> T
-  does: "takes the value at dest, leaving Default::default() in its place"
+fn take<T: Default>(dest: mut T) -> T
+  doc: "takes the value at dest, leaving Default::default() in its place"
   effects: []
 
-intent fn drop<T>(value: T)
-  does: "explicitly drops a value, running its destructor"
+fn drop<T>(value: T)
+  doc: "explicitly drops a value, running its destructor"
   effects: []
 
-intent fn forget<T>(value: T)
-  does: "prevents a value from being dropped (leaks resources)"
+fn forget<T>(value: T)
+  doc: "prevents a value from being dropped (leaks resources)"
   effects: []
 ```
 
 ### 12.23.1 Arena Allocator
 
 ```
-intent struct Arena
-  does: "a bump allocator that frees all memory at once"
+type Arena
+  doc: "a bump allocator that frees all memory at once"
 
 impl Arena
   fn new(initial_capacity: Int) -> Arena
@@ -2058,8 +2146,8 @@ impl Drop for Arena
 ```
 
 ```
-intent struct TypedArena<T>
-  does: "a bump allocator for values of a single type"
+type TypedArena<T>
+  doc: "a bump allocator for values of a single type"
 
 impl TypedArena<T>
   fn new() -> TypedArena<T>
@@ -2078,8 +2166,8 @@ FFI helpers and C type definitions. See [Chapter 10, Section 10.4](10-systems.md
 ### 12.24.1 C String Types
 
 ```
-intent struct CStr
-  does: "a borrowed null-terminated C string"
+type CStr
+  doc: "a borrowed null-terminated C string"
 
 impl CStr
   fn from_ptr(ptr: Ptr<CChar>) -> CStr with unsafe
@@ -2088,8 +2176,8 @@ impl CStr
   fn to_string_lossy(self: Self) -> String
   fn len(self: Self) -> Int
 
-intent struct CString
-  does: "an owned null-terminated C string"
+type CString
+  doc: "an owned null-terminated C string"
 
 impl CString
   fn new(s: String) -> Result<CString, NulError>
@@ -2265,7 +2353,7 @@ std/collections
 Core modules (`std/io`, `std/mem`, `std/fmt`, `std/iter`) have no dependencies beyond the language primitives. Higher-level modules (`std/http`, `std/terminal`, `std/render`) build on lower-level ones.
 
 Every module in the standard library:
-- Has its own intent layer (`.mn.intent` files).
+- Has its own contracts (in `.mn` files).
 - Is subject to parity verification.
 - Can be independently versioned (though standard library versions track the compiler).
 - Can be replaced by user code (no special compiler privileges).

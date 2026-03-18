@@ -21,14 +21,13 @@ This chapter defines the philosophy, design principles, and architectural struct
 | Domain | monel.io |
 | CLI binary | `monel` |
 | Compiler binary | `monelc` |
-| Implementation files | `.mn` |
-| Intent files | `.mn.intent` |
+| Source files | `.mn` |
 | Test files | `.mn.test` |
 | Project manifest | `monel.project` |
 | Policy file | `monel.policy` |
 | Team config | `monel.team` |
 
-A Monel project is a directory containing a `monel.project` file. All paths in the project are relative to this root. The compiler discovers `.mn`, `.mn.intent`, and `.mn.test` files by walking the directory tree from the project root.
+A Monel project is a directory containing a `monel.project` file. All paths in the project are relative to this root. The compiler discovers `.mn` and `.mn.test` files by walking the directory tree from the project root.
 
 ---
 
@@ -52,35 +51,33 @@ These problems share a root cause: mainstream languages conflate *what the progr
 
 ## 1.4 The Core Insight
 
-Monel separates **intent** from **implementation**, and the compiler enforces the boundary between them.
+Every function in Monel declares **contracts** alongside its **implementation**, and the compiler verifies the relationship between them — deterministically, with no LLM in the pipeline.
 
 ```mermaid
 graph LR
-    subgraph "Human Domain"
-        I["Intent Layer<br/>.mn.intent<br/><i>what it should do</i>"]
+    subgraph ".mn file"
+        C["Contracts<br/><i>requires, ensures,<br/>effects, invariants</i>"]
+        I["Implementation<br/><i>algorithms, expressions,<br/>control flow</i>"]
     end
-    subgraph "Machine Domain"
-        M["Implementation Layer<br/>.mn<br/><i>how it does it</i>"]
-    end
-    subgraph "Trust Domain"
-        P["Parity Compiler<br/>monelc<br/><i>do they match?</i>"]
+    subgraph "Compiler (monelc)"
+        P["Verification<br/><i>type check, effect check,<br/>SMT proof, parity</i>"]
     end
 
-    I -->|"declares contracts,<br/>effects, errors"| P
-    M -->|"provides code,<br/>actual behavior"| P
+    C -->|"declared behavior"| P
+    I -->|"actual behavior"| P
     P -->|"✓ verified"| O["Artifact"]
     P -->|"✗ mismatch"| E["Compile Error"]
 ```
 
-- **Intent** is what the program should do: its contracts, invariants, error behaviors, side effects, and purpose. Intent is written and reviewed by humans. It is the specification layer.
+- **Contracts** declare what a function must do: preconditions (`requires:`), postconditions (`ensures:`), type invariants (`invariant:`), side effects (`effects:`), panic freedom (`panics: never`). Contracts are the specification layer.
 
-- **Implementation** is how the program does it: the algorithms, data structures, control flow, and expressions that realize the intent. The language does not mandate authorship. It is the execution layer.
+- **Implementation** is how the function does it: algorithms, data structures, control flow. Contracts and code live in the same `.mn` file, co-located for readability.
 
-- **Parity** — the parity compiler verifies that implementation corresponds to intent. It checks structural alignment, type-level contracts, effect correctness, error exhaustiveness, and (optionally, with an LLM backend) semantic correspondence.
+- **Verification** — the compiler checks that implementation satisfies its contracts. Effect inference verifies declared effects. SMT solving (Z3) proves `requires:`/`ensures:` clauses. Type checking and borrow checking enforce safety. All verification is deterministic and reproducible.
 
-The compiler enforces the intent/implementation boundary. An implementation file without a corresponding intent file is a compilation error. An intent declaration without a matching implementation is a compilation error. Mismatches between declared and actual effects are compilation errors.
+A function whose implementation violates its contracts is a compilation error. A declared effect not present in the code is a warning. An undeclared effect in the code is an error. All of this happens at compile time with no external dependencies.
 
-Because the compiler verifies parity, reviewers can focus on intent and parity reports rather than tracing through implementation line by line.
+Because the compiler verifies contracts, reviewers can focus on the contracts rather than tracing through implementation line by line.
 
 ### 1.4.1 Competitive Landscape and Positioning
 
@@ -161,7 +158,7 @@ Three capabilities suggest a language rather than a tool:
 
 2. **Spec-implementation correspondence needs compilation constraints.** A linter can check annotations, but enforcing that every public function has a matching specification, that signatures agree, and that declared effects cover actual effects requires compiler-level enforcement.
 
-3. **Tiered verification is a syntax decision.** Lightweight `does:`/`fails:` by default, `@strict` with SMT where needed — this graduated approach requires the verification tier to be part of the declaration syntax.
+3. **Inline contracts are a syntax decision.** `requires:`/`ensures:` with SMT verification, `effects:` with inference checking, `panics: never` with static proof — these need to be part of the function declaration syntax, not bolted on as annotations.
 
 The closest related project is Verus (formal verification for Rust). Verus proves properties of existing Rust code for critical sections; Monel enforces spec-implementation correspondence as a default workflow.
 
@@ -169,13 +166,13 @@ The closest related project is Verus (formal verification for Rust). Verus prove
 
 | | SDD Tools | DbC Libraries | Formal Verification | Monel |
 |---|---|---|---|---|
-| **Spec format** | Markdown | Decorators/macros | Proof annotations | Typed intent syntax |
-| **Enforcement** | Convention | Runtime assertions | Static proof | Compiler-enforced parity |
+| **Spec format** | Markdown | Decorators/macros | Proof annotations | Inline contracts |
+| **Enforcement** | Convention | Runtime assertions | Static proof | Compiler-verified contracts |
 | **Effect tracking** | None | `@pure` only (deal) | N/A | First-class effect system |
-| **Verification depth** | None | Pre/post conditions | Full correctness proof | Structural + optional semantic |
-| **Annotation burden** | Low | Medium | High | Low (lightweight) to Medium (@strict) |
+| **Verification depth** | None | Pre/post conditions | Full correctness proof | Contracts + effects + SMT |
+| **Annotation burden** | Low | Medium | High | Low to Medium |
 | **Works with existing languages** | Yes | Yes | Partial (Verus/Rust) | No |
-| **Deterministic** | N/A | Yes (runtime) | Yes (static) | Yes (Stages 1-3), advisory (Stage 4) |
+| **Deterministic** | N/A | Yes (runtime) | Yes (static) | Yes (fully deterministic) |
 | **AI-agent optimized** | Workflow only | No | No | Query oracle, context gathering, edit-compatible errors |
 
 Convention-based SDD tools are Monel's natural on-ramp: teams already using spec-first workflows are the ideal early adopters.
@@ -200,46 +197,26 @@ These projects are chosen because they demand systems-level performance, have ri
 
 ---
 
-## 1.6 The Three Layers
+## 1.6 Architecture
 
-Monel's architecture consists of three co-equal layers. No layer is subordinate to another; each has a distinct purpose, a distinct audience, and distinct tooling.
+Monel has two layers: **source** and **compiler**. Contracts and implementation live together in `.mn` files.
 
-### 1.6.1 Intent Layer (`.mn.intent`)
-
-**Audience:** Humans — product managers, architects, security engineers, designers, SREs.
-
-**Purpose:** Declare *what* each module, function, type, and component should do, without specifying *how*.
+### 1.6.1 Source Layer (`.mn`)
 
 **Contents:**
-- Function contracts: purpose (`does:`), error variants (`fails:`), side effects (`effects:`), edge cases (`edge_cases:`)
-- Formal contracts (when `@strict`): preconditions (`requires:`), postconditions (`ensures:`), invariants (`invariant:`), panic freedom (`panics: never`), complexity bounds (`complexity:`)
-- Type specifications: refinement types, algebraic data type shapes, distinct type declarations
-- Module specifications: exported API surface, internal boundaries
-- Diagrammatic specifications: state machines, data flows, protocol sequences
-- Domain-specific specifications: layout intent (designers), deploy intent (SREs), build intent (DevOps), interaction intent (designers), theme intent (designers)
-
-**Syntax:** Declarative, keyword-driven, indentation-based. Designed to be readable by non-programmers. See Chapter 2 (Intent Syntax).
-
-**Authorship:** Written and reviewed by humans. LLMs may propose intent, but a human must approve it. The `monel generate` command never modifies `.mn.intent` files without explicit human confirmation.
-
-### 1.6.2 Implementation Layer (`.mn`)
-
-**Audience:** LLMs (primary generators), engineers (reviewers and occasional authors).
-
-**Purpose:** Express *how* each module, function, type, and component works — the executable logic.
-
-**Contents:**
-- Module declarations and imports
-- Function definitions with `@intent("name")` cross-references
-- Type definitions (structs, enums, traits)
-- Expression-oriented bodies: `let` bindings, `match` expressions, `if`/`else`, function calls, closures
+- Function signatures with inline contracts (`requires:`, `ensures:`, `effects:`, `panics: never`)
+- Type definitions with invariants (`invariant:`)
+- Implementation code: `let` bindings, `match` expressions, `if`/`else`, function calls, closures
+- State machine declarations, layout specifications
 - `unsafe` blocks, `async`/`await`, error propagation via `try`
 
-**Syntax:** Hybrid indentation-based syntax. Minimal delimiters. One canonical way to express each construct. Edit-friendly: function signatures are unique anchors, no wildcard imports, no ambiguous formatting. See Chapter 3 (Implementation Syntax).
+**Syntax:** Indentation-based, expression-oriented, one canonical form per construct. Contracts appear between the function signature and the body — the grammar distinguishes them without a separator. See Chapter 2 (Contract Syntax) and Chapter 3 (Implementation Syntax).
 
-**Authorship:** The language makes no distinction based on authorship — all implementation is verified against intent equally. `monel generate` can produce implementation from intent, but hand-written code is treated identically.
+**Compact form** for trivial functions: `fn len(self: Stack<T>) -> Int = self.len`
 
-### 1.6.3 Parity Compiler (`monelc`)
+**Authorship:** The language makes no distinction based on authorship. Contracts and code may be written by humans, AI agents, or both. The compiler verifies them equally.
+
+### 1.6.2 Compiler (`monelc`)
 
 **Audience:** The build system, CI pipelines, and (through its reports) humans.
 
@@ -249,46 +226,39 @@ Monel's architecture consists of three co-equal layers. No layer is subordinate 
 
 **Output:**
 - Parity reports: per-function and per-module summaries of verification results
-- Diagnostics: edit-friendly error messages with precise source locations in both `.mn.intent` and `.mn` files
+- Diagnostics: edit-friendly error messages with precise source locations
 - Executable artifacts: native binaries, WASM modules, libraries
 
 ---
 
-## 1.7 The Six-Stage Pipeline
+## 1.7 The Four-Stage Pipeline
 
-The Monel compiler (`monelc`) processes a project through six sequential stages. Each stage may produce diagnostics. Compilation halts at the first stage that produces an error.
+The Monel compiler (`monelc`) processes a project through four sequential stages. Each stage may produce diagnostics. Compilation halts at the first stage that produces an error.
 
 ```mermaid
 graph TD
-    S1["<b>Stage 1: Parse</b><br/>Lex + parse .mn.intent and .mn<br/>into ASTs"]
-    S2["<b>Stage 2: Structural Parity</b><br/>Match intent ↔ implementation<br/>signatures, types, effects"]
-    S3["<b>Stage 3: Static Verification</b><br/>Type check, borrow check,<br/>effect check, SMT contracts"]
-    S4["<b>Stage 4: Semantic Parity</b><br/>LLM verifies does:/edge_cases:<br/><i>(optional, requires [llm] config)</i>"]
-    S5["<b>Stage 5: Code Generation</b><br/>Lower to LLVM IR / WASM"]
-    S6["<b>Stage 6: Bundling</b><br/>Link → binary, library,<br/>WASM module, container"]
+    S1["<b>Stage 1: Parse</b><br/>Lex + parse .mn files<br/>into ASTs"]
+    S2["<b>Stage 2: Static Verification</b><br/>Type check, borrow check,<br/>effect check, SMT contracts"]
+    S3["<b>Stage 3: Code Generation</b><br/>Lower to LLVM IR / WASM"]
+    S4["<b>Stage 4: Bundling</b><br/>Link → binary, library,<br/>WASM module, container"]
 
     S1 -->|"ASTs + symbol tables"| S2
-    S2 -->|"parity map"| S3
-    S3 -->|"verified ASTs"| S4
-    S4 -->|"semantic report"| S5
-    S5 -->|"object files"| S6
-    S6 --> OUT["Distributable Artifacts"]
+    S2 -->|"verified ASTs"| S3
+    S3 -->|"object files"| S4
+    S4 --> OUT["Distributable Artifacts"]
 
     S1 -. "syntax error" .-> ERR["Compile Error<br/><i>(halt)</i>"]
-    S2 -. "missing intent/impl" .-> ERR
-    S3 -. "type/effect/contract error" .-> ERR
-    S4 -. "semantic warning ⚠️" .-> S5
+    S2 -. "type/effect/contract error" .-> ERR
 
-    style S4 stroke-dasharray: 5 5
     style ERR fill:#f44,color:#fff
     style OUT fill:#4a4,color:#fff
 ```
 
 ### Stage 1: Parse
 
-**Input:** `.mn.intent` files, `.mn` files, `.mn.test` files.
+**Input:** `.mn` files, `.mn.test` files.
 
-**Operation:** Lexical analysis and parsing of all source files into abstract syntax trees (ASTs). Intent files produce Intent ASTs. Implementation files produce Implementation ASTs. Test files produce Test ASTs.
+**Operation:** Lexical analysis and parsing of all source files into abstract syntax trees (ASTs). Each function's contracts (`requires:`, `ensures:`, `effects:`, etc.) and body are parsed into a single AST node.
 
 **Verification:**
 - Syntactic correctness of all files
@@ -299,79 +269,28 @@ graph TD
 
 **Failure mode:** Syntax errors with line/column locations. Suggestions for common mistakes.
 
-### Stage 2: Structural Parity
+### Stage 2: Static Verification
 
-**Input:** Intent ASTs, Implementation ASTs.
+**Input:** Parsed ASTs.
 
-**Operation:** Verify one-to-one correspondence between intent declarations and implementation definitions.
-
-**Verification:**
-- Every `intent fn` has a matching `fn` with identical signature (name, parameters, return type)
-- Every `fn` with `@intent("name")` has a matching `intent fn` declaration
-- Every `intent type` has a matching type definition
-- Every `intent module` has a matching module with correct exports
-- Every `intent state_machine` has corresponding implementation types and transition functions
-- No orphan intents (intent without implementation)
-- No orphan implementations (implementation without intent, unless explicitly marked `@no_intent`)
-
-**Output:** A structural parity map linking each intent declaration to its implementation counterpart.
-
-**Failure mode:** "Missing implementation for intent `authenticate`" or "No intent found for function `helper_fn` — add intent or mark `@no_intent`."
-
-### Stage 3: Static Verification
-
-**Input:** Implementation ASTs, structural parity map.
-
-**Operation:** Type checking, effect verification, error exhaustiveness checking, and (for `@strict` declarations) SMT-based contract verification.
+**Operation:** Type checking, effect verification, contract verification, and ownership analysis.
 
 **Verification:**
 - Full type checking of implementation code
-- Effect verification: actual side effects in function bodies must be a subset of declared `effects:` in intent
-- Error exhaustiveness: every error variant declared in `fails:` or `errors:` must be producible by the implementation, and the implementation must not produce undeclared error variants
+- Effect verification: the compiler infers actual side effects from function bodies and checks them against declared `effects:`. Undeclared effects are errors; unused declared effects are warnings.
 - Borrow checking and ownership verification (Rust-equivalent lifetime analysis)
-- `@strict` contracts: `requires:` and `ensures:` clauses are translated to SMT queries and verified via Z3 or equivalent solver
-- `panics: never` verification: compiler proves that no code path in the function can panic (no unchecked array access, no unwrap on fallible values, no integer overflow in default mode)
-- `invariant:` verification: type invariants hold at all public API boundaries
+- `requires:` and `ensures:` clauses are translated to SMT queries and verified via Z3
+- Per-error-variant postconditions: `err(Overflow) => self == old(self)` is verified for each error path
+- `panics: never` verification: compiler proves no code path can panic
+- `invariant:` verification: type invariants hold after every constructor and every `mut self` method
 - Refinement type verification: values assigned to refinement types satisfy their predicates
+- State machine verification: transitions match declared state machine, no illegal transitions
 
-**Output:** Verified implementation ASTs. Diagnostic report of all contract verification results.
+**Output:** Verified ASTs. Diagnostic report of all verification results.
 
-**Failure mode:** Type errors, effect violations, missing error variants, unsatisfiable contracts, potential panics in `panics: never` functions.
+**Failure mode:** Type errors, effect violations, unsatisfiable contracts, potential panics in `panics: never` functions.
 
-### Stage 4: Semantic Parity (LLM-Assisted, Optional)
-
-**Input:** Intent ASTs (specifically `does:` and `edge_cases:` clauses), Implementation ASTs, structural parity map.
-
-**Operation:** Use a configured LLM to verify that the semantic meaning of the implementation corresponds to the natural-language descriptions in `does:` and `edge_cases:` clauses.
-
-**Activation:** This stage runs only when an LLM backend is configured in the project manifest under `[llm]`. It is skipped entirely when:
-- No `[llm]` section is present in `monel.project`
-- The `--no-semantic` flag is passed to `monel build`
-- The build is running in offline mode
-
-**Verification:**
-- For each function with a `does:` clause, the LLM is prompted with the function's implementation and asked whether the implementation fulfills the stated purpose
-- For each function with `edge_cases:` entries, the LLM verifies that the implementation handles the described edge cases
-- The LLM's responses are structured (not free-form) and parsed into pass/warn/fail verdicts
-- Confidence scores below a configurable threshold produce warnings rather than errors
-
-**Configuration (in `monel.project`):**
-```
-[llm]
-provider = "anthropic"            # or "openai", "local", etc.
-model = "claude-sonnet-4-20250514"
-semantic_threshold = 0.8          # minimum confidence for pass
-max_concurrent = 4                # parallel verification requests
-cache = true                      # cache results for unchanged pairs
-```
-
-**Output:** Semantic parity report: per-function pass/warn/fail with LLM-generated explanations.
-
-**Failure mode:** Semantic mismatch warnings or errors. Always advisory in nature — the LLM is a second opinion, not a proof. Projects may configure semantic failures as warnings or errors.
-
-**Design principle:** The LLM is always optional. A Monel project must compile and verify correctly without any LLM. Stage 4 adds a layer of semantic assurance but is never required for correctness. Core compilation (Stages 1-3, 5-6) works fully offline.
-
-### Stage 5: Code Generation (AI-Native)
+### Stage 3: Code Generation
 
 **Input:** Verified Implementation ASTs, intent ASTs, effect analysis, parity map.
 
@@ -401,13 +320,13 @@ Monel's code generation stage has access to the full intent layer — both the i
   - `effects: [Crypto.verify]` → security-sensitive: disable timing-dependent optimizations to prevent side-channel attacks (constant-time code generation)
   - Effect budgets (e.g., `Db.write max_per_second = 1000`) → compile into lightweight runtime instrumentation (rate limiters, counters, circuit breakers injected by the compiler)
 
-- **Intent-tagged debug info.** In addition to standard debug info (source locations, variable names), Monel emits intent-mapped debug info: which `does:` description each instruction range corresponds to, which `@strict` contract governs each code path, and which effect is active at each point. This enables AI-native debugging (Section 1.7.1).
+- **Contract-tagged debug info.** In addition to standard debug info (source locations, variable names), Monel emits contract-mapped debug info: which `ensures:` clause governs each code path, which effect is active at each point, and which `invariant:` applies. This enables contract-aware debugging (Section 1.7.1).
 
 **Output:** Target-specific object files or bytecode, plus intent-mapped debug metadata.
 
-### Stage 6: Bundling
+### Stage 4: Bundling
 
-**Input:** Object files, project manifest, deploy intent (if present), parity verification results.
+**Input:** Object files, project manifest, verification results.
 
 **Operation:** Link object files into final artifacts. Package for distribution with verification metadata.
 
@@ -489,16 +408,16 @@ The compiler evaluates the hypothetical against the live model and returns the i
 When a runtime error occurs, Monel's debug info maps the crash site back to intent:
 
 ```
-PANIC at src/auth.mn:58 (fn authenticate @intent("authenticate"))
-  INTENT: "verify credentials against database and return session"
+PANIC at src/auth.mn:58 (fn authenticate)
   CONTRACT: ensures ok => result.user_id > 0
   VIOLATION: result.user_id was 0
-  PARITY: @strict ensures clause not satisfied
 
-  RELEVANT INTENT CONTEXT:
-    errors:
-      InvalidCreds: "invalid username or password"
-      Locked: "account locked after 5+ failed attempts"
+  RELEVANT CONTRACTS:
+    requires: creds.username.len > 0
+    ensures: ok => result.user_id > 0
+    ensures: err(Locked) => Db.failed_attempts(creds.username) >= 5
+    effects: [Db.read, Db.write, Crypto.verify, Log.write]
+    panics: never
 ```
 
 An AI debugger receives structured context: which intent was violated, which contract failed, and what the function was supposed to do.
@@ -521,14 +440,11 @@ The compiler generates swap stubs for safe functions and blocks on unsafe ones, 
 The parity manifest embedded in every artifact creates a chain of trust from intent through compilation to deployment:
 
 ```
-Intent (.mn.intent)
-  ↓  [Stage 2: structural match proven]
-Implementation (.mn)
-  ↓  [Stage 3: types, effects, contracts verified]
-  ↓  [Stage 4: semantic match confirmed (optional)]
-Binary (with embedded parity manifest)
+Source (.mn) — contracts + implementation
+  ↓  [Stage 2: types, effects, contracts verified via SMT]
+Binary (with embedded verification manifest)
   ↓  [manifest: all checks passed, signed]
-Deployment (parity manifest checked by CI/CD gate)
+Deployment (verification manifest checked by CI/CD gate)
 ```
 
 The build system embeds these artifacts in each binary, so auditors can trace any binary back to its verified specification.
@@ -600,64 +516,60 @@ Monel has no exceptions. All fallible operations return `Result<T, E>`. Error ty
 
 ## 1.9 The Key Workflow
 
-The primary development workflow in Monel proceeds as follows:
+### Step 1: Write Contracts
 
-### Step 1: Human Writes Intent
-
-A human (product manager, architect, engineer, designer, SRE) authors or modifies `.mn.intent` files. These files declare what the program should do.
+A human or AI agent writes the function signature and contracts:
 
 ```
-intent fn authenticate
-  does: "verifies user credentials and creates a session"
-  fails: InvalidCredentials, AccountLocked, RateLimited
-  effects: [Db.read, Db.write, Log.write]
-  edge_cases:
-    - "expired password prompts forced reset"
-    - "concurrent login attempts are serialized per user"
+fn authenticate(creds: Credentials) -> Result<Session, AuthError>
+  requires:
+    creds.username.len > 0
+    creds.password.len > 0
+  ensures:
+    ok => result.user_id > 0
+    ok => result.expires_at > Clock.now()
+    err(Locked) => Db.failed_attempts(creds.username) >= 5
+  effects: [Db.read, Db.write, Crypto.verify, Log.write]
+  panics: never
 ```
 
-### Step 2: LLM Generates Implementation
+The contracts specify *what* without specifying *how*. An AI agent can generate these from a natural-language description — the English never enters the compiler.
 
-The human runs `monel generate` (or an IDE action). The compiler reads the intent files, constructs a prompt with full project context (types, dependencies, existing code, policy constraints), and sends it to the configured LLM. The LLM produces `.mn` implementation files.
+### Step 2: Write Implementation
+
+The implementation goes directly below the contracts in the same file:
 
 ```
-monel generate src/auth.mn.intent
+  let user = Db.find_user_by_username(creds.username)
+  match user
+    | None => Err(AuthError.InvalidCreds)
+    | Some(u) =>
+      if u.failed_attempts >= 5
+        Err(AuthError.Locked)
+      else
+        ...
 ```
 
-The generated code appears as a diff in the developer's editor or as a new `.mn` file.
+### Step 3: Compiler Verifies
 
-### Step 3: Compiler Verifies Parity
-
-The compiler runs the six-stage pipeline automatically (or the developer runs `monel build`). It verifies that the generated implementation matches the intent:
-
-- Structural parity: every intent has an implementation and vice versa
-- Effects: the implementation only performs declared effects
-- Errors: every declared error variant is reachable and no undeclared variants exist
-- Contracts: `@strict` preconditions and postconditions are SMT-verified
-- Semantics (optional): the LLM confirms the implementation matches `does:` descriptions
+The compiler verifies that the implementation satisfies all contracts:
 
 ```
 monel build
 
   Stage 1: Parse ........................ OK
-  Stage 2: Structural Parity ........... OK
-  Stage 3: Static Verification ......... OK
-  Stage 4: Semantic Parity ............. OK (3 functions verified)
-  Stage 5: Code Generation ............. OK
-  Stage 6: Bundling .................... OK
+  Stage 2: Static Verification ......... OK (12 functions, 8 SMT proofs)
+  Stage 3: Code Generation ............. OK
+  Stage 4: Bundling .................... OK
 
-  Parity Report: 12/12 functions verified. 0 warnings.
+  Verification: 12/12 functions verified. 0 warnings.
 ```
 
-### Step 4: Human Reviews Intent Diff and Parity Report
+No LLM. No network. Deterministic and reproducible.
 
-The human reviews:
-1. The intent diff — did the intent change in the way they expected?
-2. The parity report — did the compiler confirm that the implementation matches?
+### Step 4: Review Contracts
 
-The human does **not** need to read the generated `.mn` code line-by-line. The parity report provides the assurance that would otherwise require manual tracing.
-
-For critical changes, the human may also review the implementation code. But the default workflow trusts the compiler's parity verification, just as developers today trust the type checker without manually verifying type safety.
+The reviewer reads contracts, not implementation. If `ensures: ok => result.user_id > 0` and the compiler says "verified," the reviewer knows the implementation returns a valid user ID on success — without reading the code that does it.
 
 ---
 
@@ -667,13 +579,12 @@ Monel's three-layer architecture enables different team roles to interact with t
 
 ### Product Manager
 
-**Primary artifact:** `.mn.intent` — function-level and module-level intent declarations.
+**Primary artifact:** Contracts in `.mn` files (with AI agent assistance).
 
 **Activities:**
-- Write `does:` clauses describing business requirements
-- Define error variants that correspond to user-facing failure modes
-- Review intent diffs to confirm changes match product requirements
-- Read parity reports to confirm implementation matches intent
+- Describe requirements in natural language; AI agent generates formal contracts
+- Review contracts (`ensures:`, error variants, effects) to confirm they match product requirements
+- Read verification reports to confirm implementation satisfies contracts
 
 ### Engineer
 
@@ -682,7 +593,7 @@ Monel's three-layer architecture enables different team roles to interact with t
 **Activities:**
 - Review LLM-generated implementation for correctness
 - Write implementation manually when needed
-- Write `@strict` contracts for critical code paths
+- Write `requires:`/`ensures:` contracts for critical code paths
 - Debug parity failures
 - Optimize performance-critical functions
 
@@ -693,7 +604,7 @@ Monel's three-layer architecture enables different team roles to interact with t
 **Activities:**
 - Define effect budgets (which modules may use which effects)
 - Define module boundaries and visibility rules
-- Configure parity verification levels (which modules require `@strict`, which allow `--no-semantic`)
+- Configure verification levels per module
 - Define coding standards enforced by the compiler
 
 **`monel.policy` example:**
@@ -713,7 +624,7 @@ src/auth/internal/* = { visibility = "auth" }
 
 ### Designer
 
-**Primary artifact:** `.mn.intent` — layout, interaction, and theme intent declarations.
+**Primary artifact:** Layout and interaction declarations in `.mn` files.
 
 **Activities:**
 - Define layout intent: regions, proportions, focus order, responsive rules
@@ -723,7 +634,7 @@ src/auth/internal/* = { visibility = "auth" }
 
 ### Security Engineer
 
-**Primary artifact:** `.mn.intent` with `@strict` — formal contracts for security-critical code.
+**Primary artifact:** Contracts with `requires:`/`ensures:`/`panics: never` on security-critical functions.
 
 **Activities:**
 - Write `requires:` and `ensures:` contracts for authentication, authorization, and cryptographic code
@@ -734,7 +645,7 @@ src/auth/internal/* = { visibility = "auth" }
 
 ### SRE / Operations
 
-**Primary artifact:** `.mn.intent` — deploy intent, operational constraints.
+**Primary artifact:** Effect policies, deploy configuration, operational constraints.
 
 **Activities:**
 - Define deploy intent: replicas, health checks, circuit breakers, resource limits
@@ -754,7 +665,7 @@ Returns structured information about any symbol, module, or relationship in the 
 
 ```
 monel query "what effects does module auth use?"
-monel query "which functions have @strict contracts?"
+monel query "which functions have panics: never?"
 monel query "show the intent for fn authenticate"
 ```
 
@@ -763,7 +674,7 @@ monel query "show the intent for fn authenticate"
 Generates a context bundle for an LLM — all the information needed to generate or modify a specific piece of code.
 
 ```
-monel context src/auth.mn.intent --for-generation
+monel context src/auth.mn --for-generation
 ```
 
 This produces a structured bundle containing:
@@ -789,13 +700,12 @@ This updates all intent files, then regenerates affected implementations, then v
 
 The following invariants hold for every valid Monel project:
 
-1. Every `.mn` file with public functions has a corresponding `.mn.intent` file (or functions are marked `@no_intent`).
-2. Every `intent fn` declaration has a matching `fn` definition with an identical signature.
-3. The actual effects of every function are a subset of its declared effects.
+1. Every exported function has contracts or is explicitly marked contract-free.
+2. The compiler-inferred effects of every function are a subset of its declared effects.
 4. Every declared error variant is reachable in the implementation.
 5. No undeclared error variants are produced by the implementation.
-6. All `@strict` contracts are verified by the SMT solver before code generation.
-7. All `panics: never` functions are proven panic-free.
+5. All `requires:` and `ensures:` contracts are verified by the SMT solver before code generation.
+6. All `panics: never` functions are proven panic-free.
 8. All refinement type assignments satisfy their predicates.
 9. The compiler produces identical output for identical input (deterministic compilation).
 10. The compiler produces correct output without any LLM (LLM is always optional).

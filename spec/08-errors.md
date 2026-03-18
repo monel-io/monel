@@ -2,14 +2,14 @@
 
 ## 8.1 Overview
 
-Monel treats errors as values. There are no exceptions, no unwinding, and no hidden control flow. Every operation that can fail returns a `Result<T, E>`, and the compiler enforces exhaustive handling of all error variants. Error types are declared in intent files, making the failure modes of every function visible to both humans and LLMs without reading the implementation.
+Monel treats errors as values. There are no exceptions, no unwinding, and no hidden control flow. Every operation that can fail returns a `Result<T, E>`, and the compiler enforces exhaustive handling of all error variants. Error types and their variants are declared alongside the functions that produce them, making the failure modes of every function visible without reading the implementation body.
 
 ## 8.2 Core Principles
 
 1. **Errors are values.** A function that can fail returns `Result<T, E>`. There is no `throw`, no exception hierarchy, no stack unwinding.
-2. **Error variants are declared in intent.** The intent file lists every variant an error type can have. The compiler verifies the implementation matches.
+2. **Error variants are declared with the function.** The function signature or its associated error type lists every variant. The compiler verifies the implementation matches.
 3. **Exhaustive handling is required.** Every `match` on a `Result` or error type must handle all variants. The compiler rejects incomplete matches.
-4. **Panics are for invariant violations only.** A `panic` indicates a bug in the program, not a recoverable error. In `@strict` intent, `panics: never` enables compile-time proof that no panics can occur.
+4. **Panics are for invariant violations only.** A `panic` indicates a bug in the program, not a recoverable error. The `panics: never` annotation enables compile-time proof that no panics can occur.
 
 ## 8.3 The Result Type
 
@@ -35,32 +35,33 @@ fn find_user(name: String) -> Result<User, DbError>
 
 ## 8.4 Error Type Declarations
 
-### 8.4.1 In Lightweight Intent
+### 8.4.1 Lightweight Error Declarations
 
-In lightweight (default) intent, error variants are declared with the `fails:` keyword:
+In lightweight (default) mode, error variants are declared with the `fails:` keyword on the function:
 
 ```
-intent fn authenticate(username: String, password: String) -> Result<Session, AuthError>
-  does: "authenticates a user and returns a session"
+fn authenticate(username: String, password: String) -> Result<Session, AuthError>
+  doc: "authenticates a user and returns a session"
+  effects: [Db.read, Crypto.hash]
   fails:
     InvalidCreds: "username or password is incorrect"
     Locked: "account has been locked after too many attempts"
     Expired: "session token has expired"
-  effects: [Db.read, Crypto.hash]
+
+  // implementation...
 ```
 
 The `fails:` block lists each variant with a human-readable description. The description serves two purposes:
-1. Documentation for humans reading the intent.
+1. Documentation for humans reading the function.
 2. Default error message if the implementation does not provide a custom one.
 
-### 8.4.2 In Strict Intent
+### 8.4.2 Error Declarations with Contracts
 
-In `@strict` intent, error variants are declared with the `errors:` keyword, which supports additional metadata:
+When contracts (`requires`/`ensures`) are present, error variants are declared with the `errors:` keyword, which supports additional metadata:
 
 ```
-@strict
-intent fn authenticate(username: String, password: String) -> Result<Session, AuthError>
-  does: "authenticates a user and returns a session"
+fn authenticate(username: String, password: String) -> Result<Session, AuthError>
+  doc: "authenticates a user and returns a session"
   requires:
     username.len() > 0
     password.len() >= 8
@@ -81,16 +82,19 @@ intent fn authenticate(username: String, password: String) -> Result<Session, Au
       recoverable: true
       http_status: 401
   effects: [Db.read, Crypto.hash]
+
+  // implementation...
 ```
 
 The additional metadata fields (`http_status`, `recoverable`, `retry_after`, etc.) are freeform key-value pairs. The compiler does not interpret them, but tooling (`monel generate`, HTTP framework integrations) can use them.
 
 ### 8.4.3 Standalone Error Type Declarations
 
-Error types can be declared as standalone types in intent, separate from any function:
+Error types can be declared as standalone types, separate from any function:
 
 ```
-intent type AuthError
+type AuthError
+  doc: "Authentication error variants"
   variants:
     InvalidCreds: "invalid username or password"
     Locked: "account is locked"
@@ -100,13 +104,15 @@ intent type AuthError
 This is useful when multiple functions share the same error type. Functions reference the type by name:
 
 ```
-intent fn authenticate(username: String, password: String) -> Result<Session, AuthError>
-  does: "authenticates a user and returns a session"
+fn authenticate(username: String, password: String) -> Result<Session, AuthError>
+  doc: "authenticates a user and returns a session"
   effects: [Db.read, Crypto.hash]
+  // ...
 
-intent fn refresh_session(token: String) -> Result<Session, AuthError>
-  does: "refreshes an expired session"
+fn refresh_session(token: String) -> Result<Session, AuthError>
+  doc: "refreshes an expired session"
   effects: [Db.read]
+  // ...
 ```
 
 ### 8.4.4 Error Type with Fields
@@ -114,7 +120,7 @@ intent fn refresh_session(token: String) -> Result<Session, AuthError>
 Error variants can carry data:
 
 ```
-intent type DbError
+type DbError
   variants:
     NotFound:
       description: "record not found"
@@ -201,21 +207,21 @@ The compiler enforces several invariants about error types and their usage.
 
 ### 8.6.1 Variant Coverage in Implementation
 
-Every error variant declared in intent must appear in the implementation. If a variant is declared but never constructed, the compiler emits a warning:
+Every error variant declared in the function's contract must appear in the implementation. If a variant is declared but never constructed, the compiler emits a warning:
 
 ```
 warning: unused error variant
-  --> src/auth/mod.mn.intent:8:5
+  --> src/auth/mod.mn:8:5
    |
  8 |     Expired: "session has expired"
    |     ^^^^^^^ variant `Expired` is declared but never constructed
    |
-   = help: remove the variant from intent, or add code that produces it
+   = help: remove the variant from the declaration, or add code that produces it
 ```
 
 ### 8.6.2 No Undeclared Variants
 
-If the implementation constructs an error variant that is not declared in the intent, the compiler emits an error:
+If the implementation constructs an error variant that is not declared, the compiler emits an error:
 
 ```
 error: undeclared error variant
@@ -224,7 +230,7 @@ error: undeclared error variant
 23 |     Err(AuthError.RateLimited("too many attempts"))
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ variant `RateLimited` is not declared
    |
-   = help: add to intent:
+   = help: add to the error declaration:
    |     RateLimited: "too many login attempts"
 ```
 
@@ -266,11 +272,10 @@ The compiler verifies that every `try` expression's error type is compatible wit
 
 ### 8.6.5 Dead Error Paths
 
-In `@strict` mode, the compiler performs reachability analysis on error paths. If a precondition makes an error variant unreachable, the compiler notes this:
+When contracts include preconditions, the compiler performs reachability analysis on error paths. If a precondition makes an error variant unreachable, the compiler notes this:
 
 ```
-@strict
-intent fn divide(a: Int64, b: Int64) -> Result<Int64, MathError>
+fn divide(a: Int64, b: Int64) -> Result<Int64, MathError>
   requires: b != 0
   errors:
     DivisionByZero: "divisor is zero"
@@ -278,7 +283,7 @@ intent fn divide(a: Int64, b: Int64) -> Result<Int64, MathError>
 
 ```
 info: error variant `DivisionByZero` is unreachable given precondition `b != 0`
-  --> src/math/mod.mn.intent:5:5
+  --> src/math/mod.mn:5:5
    |
    = note: consider removing the variant, or relaxing the precondition
 ```
@@ -306,19 +311,21 @@ When a `panic` is reached:
 
 Panics do not unwind. There is no `catch` for panics. Resources are cleaned up via the runtime's structured concurrency guarantees (parent scopes outlive child scopes, so resource owners are always valid).
 
-### 8.7.3 `panics: never` in Strict Intent
+### 8.7.3 `panics: never`
 
-In `@strict` intent, a function can declare `panics: never`:
+A function can declare `panics: never`:
 
 ```
-@strict
-intent fn safe_divide(a: Float64, b: Float64) -> Result<Float64, MathError>
-  does: "divides a by b"
-  requires: true  # no preconditions
+fn safe_divide(a: Float64, b: Float64) -> Result<Float64, MathError>
+  doc: "divides a by b"
   ensures: result.is_ok() implies result.unwrap() == a / b
   panics: never
   errors:
     DivisionByZero: "divisor is zero"
+
+  if b == 0.0
+    return Err(MathError.DivisionByZero)
+  Ok(a / b)
 ```
 
 When `panics: never` is declared, the compiler statically verifies that no code path in the function (or any function it calls) can reach a `panic`. This includes:
@@ -361,12 +368,8 @@ A function that uses `assert` or `debug_assert` cannot declare `panics: never` u
 Error types can implement `From` conversions to enable automatic conversion in `try` expressions:
 
 ```
-# In intent
-intent impl From<IoError> for ConfigError
-  does: "converts an I/O error to a config error"
-
-# In implementation
 impl From<IoError> for ConfigError
+  doc: "converts an I/O error to a config error"
   fn from(e: IoError) -> ConfigError
     ConfigError.IoError(e.path(), e.message())
 ```
@@ -431,7 +434,7 @@ The closure is only called if the result is `Err`.
 The most common error type is an enum with descriptive variants:
 
 ```
-intent type ParseError
+type ParseError
   variants:
     UnexpectedToken:
       description: "unexpected token in input"
@@ -449,7 +452,7 @@ intent type ParseError
 For errors with a single representation, a struct error type can be used:
 
 ```
-intent type HttpError
+type HttpError
   fields:
     status: UInt16
     message: String
@@ -464,7 +467,7 @@ Struct errors are used when there is only one "variant" and the error is disting
 Error types can compose other error types:
 
 ```
-intent type AppError
+type AppError
   variants:
     Config(ConfigError): "configuration error"
     Db(DbError): "database error"
@@ -498,13 +501,15 @@ Errors and effects are orthogonal but interact in important ways.
 Functions with effects typically return `Result` because the effectful operation can fail:
 
 ```
-intent fn read_file(path: String) -> Result<String, IoError>
-  does: "reads the entire contents of a file"
+fn read_file(path: String) -> Result<String, IoError>
+  doc: "reads the entire contents of a file"
   effects: [Fs.read]
   fails:
     NotFound: "file does not exist"
     PermissionDenied: "insufficient permissions"
     IoError: "generic I/O error"
+
+  // implementation...
 ```
 
 The compiler does not enforce a strict relationship between effects and errors, but `monel.policy` can:
@@ -520,12 +525,14 @@ require_result_for = ["Db.write", "Http.send", "Fs.write"]
 Functions with no effects can still return `Result`:
 
 ```
-intent fn parse_json(input: String) -> Result<JsonValue, ParseError>
-  does: "parses a JSON string into a value"
+fn parse_json(input: String) -> Result<JsonValue, ParseError>
+  doc: "parses a JSON string into a value"
   effects: []
   fails:
     InvalidSyntax: "input is not valid JSON"
     MaxDepthExceeded: "nesting depth exceeds limit"
+
+  // implementation...
 ```
 
 This is valid -- parsing is pure but fallible.
@@ -535,9 +542,10 @@ This is valid -- parsing is pure but fallible.
 Some effect-ful functions cannot fail:
 
 ```
-intent fn log_message(level: LogLevel, message: String) -> ()
-  does: "writes a log message"
+fn log_message(level: LogLevel, message: String) -> ()
+  doc: "writes a log message"
   effects: [Log.write]
+  // implementation...
 ```
 
 This is also valid -- the function has effects but no error return. The compiler permits this without warning.
@@ -558,7 +566,7 @@ error[E0412]: non-exhaustive match on Result<Session, AuthError>
    |   ^^^^^ missing variants:
    |     - Err(AuthError.Expired)
    |
-   = note: AuthError.Expired was added in src/auth/mod.mn.intent:8
+   = note: AuthError.Expired was added in src/auth/mod.mn:8
    = help: add the missing arm:
    |     Err(AuthError.Expired) -> try refresh_session(session.token)
 ```
@@ -581,7 +589,7 @@ For integration with editors and AI coding tools, the compiler can emit errors a
       "end_column": 1,
       "related": [
         {
-          "file": "src/auth/mod.mn.intent",
+          "file": "src/auth/mod.mn",
           "line": 8,
           "message": "AuthError.Expired declared here"
         }
@@ -621,7 +629,7 @@ All error-handling-related diagnostics have stable error codes:
 | E0413  | Wildcard match on error type (lint)            |
 | E0420  | `panics: never` violated                       |
 | E0421  | `panic` in function without `panics:` declaration |
-| E0430  | Error variant field mismatch (intent vs impl)  |
+| E0430  | Error variant field mismatch between declaration and implementation |
 | E0440  | Error type conversion cycle detected           |
 
 ## 8.13 The `Option` Type
@@ -641,12 +649,12 @@ type Option<T>
 
 ```
 # Option: absence is expected
-intent fn get_env(name: String) -> Option<String>
-  does: "returns the value of an environment variable, if set"
+fn get_env(name: String) -> Option<String>
+  doc: "returns the value of an environment variable, if set"
 
 # Result: absence is an error
-intent fn require_env(name: String) -> Result<String, ConfigError>
-  does: "returns the value of a required environment variable"
+fn require_env(name: String) -> Result<String, ConfigError>
+  doc: "returns the value of a required environment variable"
   fails:
     Missing: "required environment variable is not set"
 ```

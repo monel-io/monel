@@ -1,6 +1,6 @@
 # 11. Tooling and AI Integration
 
-This chapter specifies Monel's toolchain: the compiler as a query oracle, the context-gathering system, edit-compatible errors, refactoring commands, and the development server. These features constitute Monel's primary differentiation — they make AI coding tools dramatically more effective by replacing ad-hoc file searching with structured, semantic queries.
+This chapter specifies Monel's toolchain: the compiler as a query oracle, the context-gathering system, edit-compatible errors, refactoring commands, and the development server. These features replace ad-hoc file searching with structured, semantic queries for AI coding tools.
 
 The design principle: **every question an AI tool would answer by grepping becomes a CLI command**. The compiler knows more about the code than any text search can discover. Monel exposes that knowledge directly.
 
@@ -96,17 +96,17 @@ Returns the public API surface of a module: all exported types, functions, trait
 ```bash
 monel query surface std/net
 monel query surface std/net --format llm
-monel query surface myapp/handler --include-intent  # include intent annotations
+monel query surface myapp/handler --include-contracts  # include contract annotations
 ```
 
 Options:
-- `--include-intent` — include `does:`, `fails:`, and `panics:` annotations.
+- `--include-contracts` — include `doc:`, `fails:`, and `panics:` annotations.
 - `--include-private` — include non-exported items.
 - `--depth N` — for nested modules, recurse N levels deep (default 1).
 
 #### `monel query fn <module>::<fn>`
 
-Returns the full contract for a function: signature, intent, effects, source location, and body (if requested).
+Returns the full contract for a function: signature, contracts, effects, source location, and body (if requested).
 
 ```bash
 monel query fn std/json::parse
@@ -116,15 +116,15 @@ monel query fn myapp/handler::process_request --format json
 
 Output includes:
 - Full type signature with generic constraints.
-- Intent block (`does`, `fails`, `panics`, `safety`).
+- Contract block (`doc`, `fails`, `panics`, `safety`).
 - Declared and transitive effects.
 - Source file and line number.
-- Parity status (verified, pending, failed).
+- Parity status (verified, pending, failed) when contracts are present.
 - Optionally, the implementation body (`--with-body`).
 
 #### `monel query type <module>::<type>`
 
-Returns a complete type definition: fields/variants, trait implementations, associated functions, and intent.
+Returns a complete type definition: fields/variants, trait implementations, associated functions, and contracts.
 
 ```bash
 monel query type std/net::TcpStream
@@ -135,7 +135,7 @@ Output includes:
 - Type definition (struct fields, enum variants).
 - Trait implementations.
 - Associated functions and methods.
-- Intent annotations.
+- Contract annotations.
 - Size and alignment (with `--layout`).
 
 #### `monel query effects <module>::<fn>`
@@ -257,7 +257,7 @@ myapp/model::User
   direct dependents: 14 functions in 6 modules
   transitive dependents: 47 functions in 12 modules
   affected tests: 23
-  affected intents: 14
+  affected contracts: 14
   risk: high (public type, widely used)
 
   modules affected:
@@ -284,7 +284,7 @@ This is the single most valuable command for AI coding tools. Before making chan
 
 #### `monel query search`
 
-Search by type signature, effect, or intent description.
+Search by type signature, effect, or contract description.
 
 ```bash
 # Search by type signature
@@ -296,9 +296,9 @@ monel query search --type "Result<T, E> -> Option<T>"
 monel query search --effect "Net.listen"
 monel query search --effect "Db.read, Db.write"
 
-# Search by intent description (regex on does: field)
-monel query search --does "parse.*JSON"
-monel query search --does "validate.*email"
+# Search by doc description (regex on doc: field)
+monel query search --doc "parse.*JSON"
+monel query search --doc "validate.*email"
 
 # Combined
 monel query search --type "String -> Result<*, *>" --effect "Net"
@@ -323,8 +323,7 @@ Output:
 ```json
 {
   "primary_files": [
-    {"path": "src/handler.mn", "reason": "HTTP handler implementation"},
-    {"path": "src/handler.mn.intent", "reason": "HTTP handler intent"}
+    {"path": "src/handler.mn", "reason": "HTTP handler (contracts + implementation)"}
   ],
   "reference_files": [
     {"path": "src/middleware.mn", "reason": "existing middleware pattern"},
@@ -333,10 +332,9 @@ Output:
   ],
   "affected": [
     {"path": "src/handler.mn.test", "reason": "handler tests need updating"},
-    {"path": "src/middleware.mn.intent", "reason": "may need new middleware intent"}
+    {"path": "src/middleware.mn", "reason": "may need new middleware contract"}
   ],
   "suggested_reading_order": [
-    "src/handler.mn.intent",
     "src/middleware.mn",
     "src/handler.mn",
     "src/config.mn"
@@ -345,7 +343,7 @@ Output:
 }
 ```
 
-This command uses the compiler's dependency graph and module index to determine relevance. When an LLM is configured (`[llm]` in `monel.project`), it uses embedding-based similarity for natural language queries. Without an LLM, it falls back to keyword matching against intent `does:` fields.
+This command uses the compiler's dependency graph and module index to determine relevance. When an LLM is configured (`[llm]` in `monel.project`), it uses embedding-based similarity for natural language queries. Without an LLM, it falls back to keyword matching against `doc:` fields.
 
 ### 11.2.2 Symbol-Based Context
 
@@ -355,11 +353,10 @@ monel context --for myapp/model::User
 ```
 
 This variant does not require an LLM. It uses the compiler's pre-built index to gather:
-- The symbol's definition and intent.
+- The symbol's definition and contracts.
 - Direct dependencies (types referenced, functions called).
 - Trait implementations used.
 - Relevant test files.
-- Related intent files.
 
 ### 11.2.3 Context Options
 
@@ -497,7 +494,7 @@ monel fix --format json           # output applied changes as JSON
 
 ## 11.4 Refactoring Commands
 
-The `monel refactor` family provides semantic refactoring operations. Unlike text-based find-and-replace, these understand the language structure: they rename across modules, update imports, adjust intent files, and preserve formatting.
+The `monel refactor` family provides semantic refactoring operations. Unlike text-based find-and-replace, these understand the language structure: they rename across modules, update imports, adjust contracts, and preserve formatting.
 
 ### 11.4.1 Rename
 
@@ -511,14 +508,12 @@ Rename updates:
 - The definition site.
 - All references across the codebase.
 - Import statements.
-- Intent files that reference the symbol.
 - Test files.
 - Documentation comments.
 
 Options:
 - `--dry-run` — show changes without applying.
 - `--format json` — output changes as JSON edits.
-- `--no-intent` — skip intent file updates.
 
 ### 11.4.2 Move
 
@@ -531,7 +526,6 @@ Move transfers a symbol to a different module, updating:
 - The definition (moves code to target module file).
 - All import statements.
 - Re-exports if the symbol was part of the public API.
-- Intent files.
 
 ### 11.4.3 Extract Function
 
@@ -544,7 +538,7 @@ Extract takes a range of lines and lifts them into a new function. The compiler:
 - Analyzes which variables are read (become parameters).
 - Analyzes which variables are written (become return values or `&mut` parameters).
 - Determines the effect set of the extracted code.
-- Generates an intent stub for the new function.
+- Generates a contract stub for the new function.
 - Replaces the original lines with a call to the new function.
 
 ### 11.4.4 Change Signature
@@ -559,7 +553,7 @@ monel refactor signature myapp/handler::process --rename-param "req" "request"
 Change signature updates:
 - The function definition.
 - All call sites (adding default values for new parameters, removing arguments for deleted parameters).
-- The intent file.
+- Contracts in the same file.
 - Test files.
 
 ### 11.4.5 Split Module
@@ -570,8 +564,7 @@ monel refactor split myapp/handler --extract "rate_*" --into myapp/rate_limiter
 ```
 
 Split extracts functions from one module into a new module, creating:
-- A new module file with the extracted functions.
-- A new intent file for the extracted functions.
+- A new module file with the extracted functions and their contracts.
 - Updated imports in all affected modules.
 - Re-exports from the original module (optional, with `--re-export`).
 
@@ -584,7 +577,6 @@ All refactoring commands support:
 | `--dry-run` | Show changes without applying |
 | `--format json` | Output changes as JSON edits |
 | `--format text` | Output changes as unified diff |
-| `--no-intent` | Skip intent file updates |
 | `--no-test` | Skip test file updates |
 | `--interactive` | Confirm each change |
 
@@ -615,10 +607,9 @@ monel check --effects                 # only effect checking
 | 1. Parse | `--parse` | Syntax validation | < 10ms |
 | 2. Types | `--types` | Type checking and inference | < 50ms |
 | 3. Effects | `--effects` | Effect checking and propagation | < 20ms |
-| 4. Parity | `--parity` | Intent/implementation correspondence | < 100ms* |
-| 5. Safety | `--safety` | Borrow checking, lifetime analysis | < 50ms |
+| 4. Safety | `--safety` | Borrow checking, lifetime analysis | < 50ms |
 
-*Stage 4 (Parity) time depends on whether LLM verification is enabled. Deterministic parity checks (signature matching, effect coverage, contract syntax) complete in < 100ms. Semantic parity (LLM-based natural-language verification) adds latency based on the LLM provider.
+Parity verification (`--parity`) checks contract/implementation correspondence deterministically: signature matching, effect coverage, contract syntax, and `requires:`/`ensures:` clauses via SMT. It runs as part of `monel check` but is not a numbered pipeline stage. No LLM is involved in the build pipeline.
 
 ### 11.5.3 Check Output
 
@@ -633,9 +624,9 @@ monel check --format json
     "parse": {"status": "pass", "duration_ms": 3},
     "types": {"status": "pass", "duration_ms": 18},
     "effects": {"status": "fail", "duration_ms": 12, "errors": 1},
-    "parity": {"status": "skip", "reason": "blocked by effects failure"},
     "safety": {"status": "pass", "duration_ms": 22}
   },
+  "parity": {"status": "skip", "reason": "blocked by effects failure"},
   "errors": [...],
   "warnings": [...],
   "total_duration_ms": 55
@@ -646,7 +637,7 @@ monel check --format json
 
 Verification results are cached per function hash. The hash includes:
 - The function's AST (normalized).
-- The function's intent (if any).
+- The function's contracts (if any).
 - The signatures of all functions called (transitive).
 - The effect set.
 - The compiler version.
@@ -700,7 +691,7 @@ monel diff --format json
       "effects_changed": true,
       "old_effects": ["Db.read"],
       "new_effects": ["Db.read", "Log"],
-      "intent_updated": false,
+      "contracts_updated": false,
       "parity_status": "broken",
       "blast_radius": 14
     },
@@ -709,7 +700,7 @@ monel diff --format json
       "symbol": "myapp/handler::RateLimit",
       "symbol_kind": "struct",
       "file": "src/handler.mn",
-      "has_intent": false
+      "has_contracts": false
     },
     {
       "kind": "removed",
@@ -738,11 +729,11 @@ monel diff --format text
 Modified: myapp/handler::process_request
   Signature: + ctx: Context parameter
   Effects:   + Log
-  Parity:    BROKEN (intent not updated)
+  Parity:    BROKEN (contracts not updated)
   Blast:     14 functions affected
 
 Added: myapp/handler::RateLimit (struct)
-  Intent:    MISSING
+  Contracts: MISSING
 
 Removed: myapp/handler::legacy_process
   Refs:      0 remaining references (safe to remove)
@@ -756,7 +747,7 @@ These commands integrate with configured LLMs for code generation and explanatio
 
 ### 11.7.1 `monel sketch`
 
-Generates an intent stub from a natural-language description:
+Generates a contract stub from a natural-language description:
 
 ```bash
 monel sketch "function that rate-limits HTTP requests by IP address"
@@ -765,8 +756,8 @@ monel sketch "function that rate-limits HTTP requests by IP address"
 Output:
 
 ```
-intent fn rate_limit(req: &HttpRequest, config: &RateLimitConfig) -> Result<Unit, RateLimitError>
-  does: "checks if the request's IP address has exceeded the rate limit"
+fn rate_limit(req: &HttpRequest, config: &RateLimitConfig) -> Result<Unit, RateLimitError>
+  doc: "checks if the request's IP address has exceeded the rate limit"
   fails: "if the IP has exceeded the configured requests per window"
   effects: [Time.now, Cache.read, Cache.write]
   panics: never
@@ -774,7 +765,6 @@ intent fn rate_limit(req: &HttpRequest, config: &RateLimitConfig) -> Result<Unit
 
 Options:
 - `--module <mod>` — generate in the context of a specific module.
-- `--strict` — generate `@strict` intent with full contracts.
 - `--output <file>` — write to file instead of stdout.
 
 ### 11.7.2 `monel explain`
@@ -789,22 +779,22 @@ monel explain --diff HEAD~1           # explain recent changes
 
 ### 11.7.3 `monel generate`
 
-Generates an implementation from an intent:
+Generates an implementation from contracts in a `.mn` file:
 
 ```bash
-monel generate src/handler.mn.intent::rate_limit
-monel generate src/handler.mn.intent                 # all unimplemented intents
+monel generate src/handler.mn::rate_limit
+monel generate src/handler.mn                        # all unimplemented contracts
 ```
 
 The generated implementation:
-- Satisfies the intent's type signature and effect declarations.
+- Satisfies the contract's type signature and effect declarations.
 - Passes parity verification (deterministic checks).
-- Is written to the corresponding `.mn` file.
+- Is written into the same `.mn` file.
 - Requires human review before committing.
 
 ### 11.7.4 `monel regen`
 
-Regenerates a specific function's implementation, preserving the intent:
+Regenerates a specific function's implementation, preserving the contracts:
 
 ```bash
 monel regen myapp/handler::process_request
@@ -812,7 +802,7 @@ monel regen myapp/handler::process_request --reason "optimize for throughput"
 ```
 
 This is useful when:
-- The implementation has drifted from the intent.
+- The implementation has drifted from the contracts.
 - Performance requirements have changed.
 - The coding style should be updated.
 
@@ -836,7 +826,6 @@ Creates:
 - `monel.project` — project configuration.
 - `src/main.mn` — entry point (for applications).
 - `src/lib.mn` — library root (for libraries).
-- `src/main.mn.intent` — entry point intent.
 
 ### 11.8.2 `monel sync`
 
@@ -877,14 +866,17 @@ See [Section 11.5](#115-incremental-verification).
 Run tests:
 
 ```bash
-monel test                         # all tests
-monel test --module myapp/handler  # tests for a module
+monel test                              # all tests
+monel test --module myapp/handler       # tests for a module
 monel test --fn myapp/handler::test_process  # single test
-monel test --filter "rate_limit"   # filter by name
-monel test --changed               # only tests affected by changes
-monel test --coverage              # with code coverage
-monel test --property              # only property-based tests
-monel test --format json           # machine-readable results
+monel test --filter "rate_limit"        # filter by name
+monel test --changed                    # only tests affected by changes
+monel test --coverage                   # with code coverage
+monel test --property                   # only property-based tests
+monel test --format json                # machine-readable results
+monel test --gen-contract-tests         # generate property tests from contracts
+monel test --gen-contract-tests src/auth.mn  # for specific file
+monel test --gen-llm-tests src/auth.mn  # LLM generates additional tests (requires [llm] config)
 ```
 
 ### 11.8.6 `monel audit`
@@ -927,8 +919,8 @@ monel metrics --format json
 ```
 
 Outputs:
-- Lines of code (implementation, intent, test).
-- Intent coverage (% of functions with intents).
+- Lines of code (implementation, contracts, test).
+- Contract coverage (% of functions with contracts).
 - Parity status (% verified, % pending, % failed).
 - Effect density (effects per function).
 - Unsafe density (unsafe blocks per module).
@@ -952,8 +944,8 @@ The REPL supports:
 - Expression evaluation.
 - Type queries (`:type <expr>`).
 - Effect queries (`:effects <expr>`).
-- Intent checking — `requires`/`ensures` contracts are checked at runtime.
-- Parity checking — if an intent is in scope, the REPL verifies that evaluated expressions satisfy it.
+- Contract checking — `requires`/`ensures` contracts are checked at runtime.
+- Parity checking — if contracts are in scope, the REPL verifies that evaluated expressions satisfy them.
 - Loading and reloading modules (`:load`, `:reload`).
 
 ---
@@ -973,7 +965,7 @@ monel dev --no-overlay             # disable error overlay
 
 On file change, the dev server:
 1. **Incrementally rebuilds** — only recompiles changed functions and their transitive dependents. Target: sub-100ms for deterministic checks.
-2. **Runs parity checks** — verifies that changed implementations still match their intents.
+2. **Runs parity checks** — verifies that changed implementations still match their contracts.
 3. **Hot-swaps safe functions** — replaces function implementations in the running program without restart (see below).
 4. **Updates error overlay** — displays errors in a terminal overlay or LSP diagnostics.
 5. **Streams live effect visualization** — shows which effects are being exercised in real time.
@@ -1017,11 +1009,11 @@ This requires that the application's state types implement `Serialize` and `Dese
 
 ### 11.9.4 Live Parity Feedback
 
-During `monel dev`, the dev server continuously checks parity between intent and implementation. Results stream to the LSP client:
+During `monel dev`, the dev server continuously checks parity between contracts and implementation. Results stream to the LSP client:
 
 - Green: parity verified.
-- Yellow: parity pending (intent or implementation changed, not yet verified).
-- Red: parity broken (implementation does not match intent).
+- Yellow: parity pending (contracts or implementation changed, not yet verified).
+- Red: parity broken (implementation does not match contracts).
 
 ### 11.9.5 Error Overlay
 
@@ -1060,14 +1052,14 @@ An AI tool must:
 An AI tool uses structured commands:
 
 1. `monel context "Add rate limiting"` — 1 call (returns exact file set).
-2. Read primary files (handler intent + implementation) — 2 calls.
+2. Read primary file (handler contracts + implementation) — 1 call.
 3. `monel query surface myapp/middleware --format llm` — 1 call (middleware patterns).
-4. `monel sketch "rate limit by IP"` — 1 call (generates intent stub).
-5. `monel generate rate_limit` — 1 call (generates implementation from intent).
+4. `monel sketch "rate limit by IP"` — 1 call (generates contract stub).
+5. `monel generate rate_limit` — 1 call (generates implementation from contracts).
 6. `monel check --changed --format json` — 1 call (verify, get actionable fixes).
 7. `monel fix` — 0-1 calls (auto-apply certain fixes).
 
-**Total: ~7-9 tool calls**, all targeted and productive.
+**Total: ~6-8 tool calls**, all targeted and productive.
 
 The reduction comes from eliminating speculative searches. The compiler knows the codebase structure; the AI tool queries it directly instead of guessing.
 
@@ -1081,7 +1073,7 @@ The Monel language server (`monel lsp`) exposes all query and refactoring capabi
 
 - Diagnostics (real-time error reporting).
 - Go to definition / Find references.
-- Hover information (type, intent, effects).
+- Hover information (type, contracts, effects).
 - Code completion (type-aware, effect-aware).
 - Signature help.
 - Code actions (fix suggestions from Section 11.3).
@@ -1094,7 +1086,7 @@ The Monel language server (`monel lsp`) exposes all query and refactoring capabi
 - `monel/effects` — effect visualization for current function.
 - `monel/blast` — blast radius for symbol under cursor.
 - `monel/context` — context gathering for selected code.
-- `monel/intent` — show/edit intent for current function.
+- `monel/contracts` — show/edit contracts for current function.
 - `monel/hotswap` — hot-swap status and confirmation.
 
 ### 11.11.3 Editor Integration

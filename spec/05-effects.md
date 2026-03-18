@@ -14,37 +14,19 @@ This chapter specifies how developers declare side effects and how the compiler 
 
 4. **Queryable.** The toolchain exposes effect information via `monel query effects`, enabling AI coding tools, CI pipelines, and SRE dashboards to reason about what a module can do.
 
-5. **Bridged across layers.** Effects are declared in both intent and implementation. The parity checker verifies that implementation effects are a subset of intent-declared effects.
+5. **Declared and inferred.** Effects are declared on the function signature. The compiler infers the actual effects from the function body and checks that they are a subset of the declared effects.
 
 ---
 
 ## 5.2 Effect Declarations
 
-### 5.2.1 In Intent Files
+### 5.2.1 Syntax
 
-Intent files declare effects using a list:
-
-```yaml
-intent fn save_user
-  does: "Persist a user record to the database"
-  params:
-    user: User
-  returns: Result<Unit, DbError>
-  effects: [Db.write, Log.write]
-  fails:
-    - DbError.ConnectionLost: "database connection was dropped"
-    - DbError.DuplicateKey: "user with this ID already exists"
-```
-
-The `effects:` field lists the maximum set of effects this function may perform. The implementation may use a subset but must not exceed this set.
-
-### 5.2.2 In Implementation Files
-
-Implementation files declare effects on function signatures:
+Effects are declared on function signatures using the `effects:` field:
 
 ```
 fn save_user(user: User) -> Result<Unit, DbError>
-  @intent("save_user")
+  doc: "Persist a user record to the database"
   effects: [Db.write, Log.write]
 
   log.info("Saving user {user.id}")
@@ -52,9 +34,9 @@ fn save_user(user: User) -> Result<Unit, DbError>
   Ok(())
 ```
 
-The `effects:` declaration appears after the `@intent` tag (if present) and before the function body. It is part of the function's type signature.
+The `effects:` declaration lists the maximum set of effects this function may perform. The compiler infers the actual effects from the function body and verifies they do not exceed the declared set.
 
-### 5.2.3 Pure Functions
+### 5.2.2 Pure Functions
 
 A function with no `effects:` declaration is pure:
 
@@ -70,7 +52,7 @@ This is equivalent to writing `effects: [pure]`, though the explicit form is rar
 - Can be memoized by the compiler.
 - Can be evaluated at compile time if their inputs are const.
 
-### 5.2.4 Effect Syntax
+### 5.2.3 Effect Syntax
 
 Effects are written as `Category.operation` or just `Category.*` to indicate all operations in a category:
 
@@ -307,9 +289,9 @@ The wildcard `Payment.*` matches all three.
 
 ## 5.5 Effect Checking Rules
 
-### 5.5.1 Declaration Requirement
+### 5.5.1 Declaration and Inference
 
-Every function must declare all effects it may perform. A function's declared effects must be a superset of the effects actually performed in its body:
+Every function must declare all effects it may perform. The compiler infers the actual effects from the function body and checks that they are a subset of the declared set:
 
 ```
 fn save_and_notify(user: User) -> Result<Unit, Error>
@@ -321,7 +303,7 @@ fn save_and_notify(user: User) -> Result<Unit, Error>
   Ok(())
 ```
 
-If the function body calls a function with an effect not in the declaration, compilation fails:
+If the compiler infers an effect from the function body that is not in the declaration, compilation fails:
 
 ```
 fn save_user(user: User) -> Result<Unit, Error>
@@ -549,7 +531,7 @@ fn process(items: &Vec<Item>) -> Vec<String>
 
 ### 5.7.3 Effect Suggestion
 
-When a function body performs effects not in its declaration, the compiler suggests the correct declaration:
+When the compiler infers effects not in the function's declaration, it suggests the correct declaration:
 
 ```
 fn update_user(user: User) -> Result<Unit, Error>
@@ -840,54 +822,54 @@ $ monel dev --effects --dashboard
 
 ---
 
-## 5.13 Intent-Implementation Effect Parity
+## 5.13 Effect Verification
 
-The parity checker verifies that effects are consistent between layers.
+The compiler verifies that declared effects are consistent with the function body.
 
 ### 5.13.1 Subset Rule
 
-Implementation effects must be a subset of intent-declared effects:
-
-```yaml
-# Intent:
-intent fn save_user
-  effects: [Db.write, Log.write, Http.send]
-```
+The compiler infers the actual effects from the function body and checks that they are a subset of the declared effects:
 
 ```
-# Implementation:
 fn save_user(user: User) -> Result<Unit, Error>
-  @intent("save_user")
-  effects: [Db.write, Log.write]  // OK: subset of intent effects
+  effects: [Db.write, Log.write]
+
+  log.info("Saving user {user.id}")
+  db.users.insert(user)?
+  Ok(())
 ```
 
-This is valid — the intent declares the maximum allowed effects, and the implementation may use fewer.
+The inferred effects `{Db.write, Log.write}` are a subset of the declared effects `{Db.write, Log.write}`, so compilation succeeds.
 
 ### 5.13.2 Violation: Excess Effects
 
+If the body performs effects beyond the declaration, the compiler reports an error:
+
 ```
 fn save_user(user: User) -> Result<Unit, Error>
-  @intent("save_user")
-  effects: [Db.write, Log.write, Fs.write]  // ERROR: Fs.write not in intent
+  effects: [Db.write, Log.write]
 
-// Parity error:
-// error[P0301]: effect `Fs.write` not declared in intent
-//   --> src/user_service.mn:3:1
+  db.users.insert(user)?
+  log.info("Saved user")
+  fs.write("audit.log", "saved {user.id}")  // ERROR: Fs.write not declared
+
+// Compiler output:
+// error[E0401]: effect `Fs.write` not declared
+//   --> src/user_service.mn:5:3
 //   |
-// 3 |   effects: [Db.write, Log.write, Fs.write]
-//   |                                  ^^^^^^^^ not allowed by intent
+// 5 |   fs.write("audit.log", "saved {user.id}")
+//   |   ^^^ this call requires `Fs.write`
 //   |
-//   = note: intent allows: [Db.write, Log.write, Http.send]
-//   = help: either add `Fs.write` to the intent or remove it from the implementation
+//   = help: add `Fs.write` to the effects declaration
 ```
 
-### 5.13.3 Missing Effects Warning
+### 5.13.3 Unused Effects Warning
 
-If the intent declares effects that the implementation does not use, a warning is issued:
+If the declaration includes effects that the compiler does not infer from the body, a warning is issued:
 
 ```
-// warning[P0302]: intent declares `Http.send` but implementation does not use it
-//   = note: consider removing `Http.send` from the intent if it is no longer needed
+// warning[W0302]: declared effect `Http.send` is not used in function body
+//   = note: consider removing `Http.send` from the effects declaration if it is no longer needed
 ```
 
 ---
@@ -921,12 +903,11 @@ fn_type_effect = "fn" "(" params ")" "->" type "with" "effects" IDENT
 |----------|----------|
 | Default | `pure` (no effects) |
 | Declaration | `effects: [list]` on function signature |
-| Checking | Effects propagate transitively; must be declared |
+| Inference | Compiler infers actual effects from function body |
+| Checking | Inferred effects must be a subset of declared effects |
 | Polymorphism | `with effects E` on function type parameters |
-| Inference | Within function bodies only; signatures are explicit |
 | Budgets | Runtime rate limits, configured in `monel.project` |
 | Policies | Forbidden combinations, module restrictions |
-| Parity | Implementation effects must be subset of intent effects |
 | Queries | `monel query effects` for programmatic access |
 | Visualization | `monel dev --effects` for real-time tracing |
 | Hot-swap | Effect category determines swap safety level |

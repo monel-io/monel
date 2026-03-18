@@ -1,0 +1,434 @@
+# Web Server — async REST API with middleware, database, rate limiting, and graceful shutdown
+# Demonstrates: async/await, structured concurrency, middleware chains, state machines,
+# per-error-variant contracts, effect tracking, and invariant enforcement
+
+use std/http {Request, Response, Method, StatusCode, Header}
+use std/json {Json, FromJson, ToJson}
+use std/time {Duration, Instant, Clock}
+use std/net {TcpListener, TcpStream}
+use std/log {info, warn, error}
+use std/crypto {Crypto, Token}
+use std/sync {Mutex, RwLock, Channel, WaitGroup}
+use std/collections {HashMap, Vec}
+
+# ─── Configuration ───
+
+type ServerConfig
+  invariant:
+    self.port > 0
+    self.port <= 65535
+    self.max_connections > 0
+    self.worker_count > 0
+
+  host: String
+  port: Int
+  worker_count: Int
+  max_connections: Int
+  shutdown_timeout: Duration
+  rate_limit: RateLimitConfig
+
+type RateLimitConfig
+  invariant:
+    self.requests_per_window > 0
+    self.window > Duration.zero()
+
+  requests_per_window: Int
+  window: Duration
+
+type TlsConfig
+  cert_path: String
+  key_path: String
+
+# ─── Domain Types ───
+
+type UserId = distinct Int
+type PostId = distinct Int
+
+type User
+  id: UserId
+  username: String
+  email: String
+  password_hash: String
+  created_at: Instant
+  is_active: Bool
+
+type Post
+  id: PostId
+  author_id: UserId
+  title: String
+  body: String
+  published: Bool
+  created_at: Instant
+  updated_at: Instant
+
+type CreatePostRequest
+  derives: [FromJson]
+  title: String
+  body: String
+
+type UpdatePostRequest
+  derives: [FromJson]
+  title: Option<String>
+  body: Option<String>
+  published: Option<Bool>
+
+type PostResponse
+  derives: [ToJson]
+  id: PostId
+  author: String
+  title: String
+  body: String
+  published: Bool
+  created_at: String
+
+type PagedResponse<T>
+  derives: [ToJson]
+  items: Vec<T>
+  total: Int
+  page: Int
+  per_page: Int
+
+# ─── Errors ───
+
+type ApiError
+  | BadRequest(String)
+  | Unauthorized
+  | Forbidden
+  | NotFound(String)
+  | RateLimited(Duration)
+  | Conflict(String)
+  | Internal(String)
+
+fn status_code(self: ApiError) -> StatusCode = match self
+  | BadRequest(_)  => StatusCode.BadRequest
+  | Unauthorized   => StatusCode.Unauthorized
+  | Forbidden      => StatusCode.Forbidden
+  | NotFound(_)    => StatusCode.NotFound
+  | RateLimited(_) => StatusCode.TooManyRequests
+  | Conflict(_)    => StatusCode.Conflict
+  | Internal(_)    => StatusCode.InternalServerError
+
+fn to_response(self: ApiError) -> Response
+  ensures:
+    result.status == self.status_code()
+    self is Internal => not result.body.contains(self.message())
+
+  let body = match self
+    | Internal(_) => Json.object("error", "internal server error")
+    | other => Json.object("error", other.to_string())
+  Response.json(self.status_code(), body)
+
+# ─── Rate Limiter ───
+
+type RateLimiter
+  invariant: self.config.requests_per_window > 0
+
+  config: RateLimitConfig
+  buckets: Mutex<HashMap<String, TokenBucket>>
+
+type TokenBucket
+  tokens: Int
+  last_refill: Instant
+
+fn new_rate_limiter(config: RateLimitConfig) -> RateLimiter
+  ensures: result.config == config
+
+  RateLimiter
+    config: config
+    buckets: Mutex.new(HashMap.new())
+
+fn check_rate_limit(self: mut RateLimiter, key: String) -> Result<(), ApiError>
+  ensures:
+    err(RateLimited(d)) => d > Duration.zero()
+  effects: [Clock.read]
+
+  let now = Clock.now()
+  let buckets = self.buckets.lock()
+  let bucket = buckets.get_or_insert(key, TokenBucket
+    tokens: self.config.requests_per_window
+    last_refill: now)
+  let elapsed = now.since(bucket.last_refill)
+  if elapsed >= self.config.window
+    bucket.tokens = self.config.requests_per_window
+    bucket.last_refill = now
+  if bucket.tokens > 0
+    bucket.tokens = bucket.tokens - 1
+    Ok(())
+  else
+    let retry_after = self.config.window.sub(elapsed)
+    Err(ApiError.RateLimited(retry_after))
+
+# ─── Middleware ───
+
+type Middleware = fn(Request, fn(Request) -> async Response) -> async Response
+
+fn logging_middleware(req: Request, next: fn(Request) -> async Response) -> async Response
+  ensures: result.headers.has("X-Request-Id")
+  effects: [Log.write, Clock.read]
+
+  let request_id = Crypto.random_hex(16)
+  let start = Clock.now()
+  info("request_start", method: req.method, path: req.path, request_id: request_id)
+  let response = await next(req)
+  let elapsed = Clock.now().since(start)
+  info("request_end",
+    method: req.method,
+    path: req.path,
+    status: response.status,
+    duration_ms: elapsed.as_millis(),
+    request_id: request_id)
+  response.with_header("X-Request-Id", request_id)
+
+fn auth_middleware(req: Request, next: fn(Request) -> async Response) -> async Response
+  effects: [Db.read, Clock.read]
+
+  let token = req.header("Authorization")
+  match token
+    | None => ApiError.Unauthorized.to_response()
+    | Some(t) =>
+      let session = await Db.find_session(t.strip_prefix("Bearer "))
+      match session
+        | None => ApiError.Unauthorized.to_response()
+        | Some(s) if s.expires_at <= Clock.now() => ApiError.Unauthorized.to_response()
+        | Some(s) =>
+          let authed_req = req.with_context("user_id", s.user_id)
+          await next(authed_req)
+
+fn rate_limit_middleware(limiter: mut RateLimiter) -> Middleware
+  ensures: result is fn
+
+  fn(req: Request, next: fn(Request) -> async Response) -> async Response
+    let key = req.remote_addr().to_string()
+    match check_rate_limit(limiter, key)
+      | Ok(()) => await next(req)
+      | Err(e) =>
+        let response = e.to_response()
+        match e
+          | ApiError.RateLimited(retry_after) =>
+            response.with_header("Retry-After", retry_after.as_secs().to_string())
+          | _ => response
+
+# ─── Route Handlers ───
+
+fn list_posts(req: Request) -> async Result<Response, ApiError>
+  ensures:
+    ok => result.status == 200
+  effects: [Db.read]
+
+  let page = req.query_param("page").map(Int.parse).unwrap_or(Ok(1))?
+  let per_page = req.query_param("per_page").map(Int.parse).unwrap_or(Ok(20))?
+  if page < 1 or per_page < 1 or per_page > 100
+    return Err(ApiError.BadRequest("invalid pagination parameters"))
+  let (posts, total) = await Db.list_posts(page, per_page)
+  let items = posts.map(fn(p) => post_to_response(p))
+  Ok(Response.json(200, PagedResponse
+    items: items
+    total: total
+    page: page
+    per_page: per_page))
+
+fn get_post(req: Request) -> async Result<Response, ApiError>
+  ensures:
+    ok => result.status == 200
+    err(NotFound(_)) => true
+  effects: [Db.read]
+
+  let id = PostId(try parse_path_param(req, "id"))
+  let post = await Db.find_post(id)
+  match post
+    | None => Err(ApiError.NotFound("post not found"))
+    | Some(p) => Ok(Response.json(200, post_to_response(p)))
+
+fn create_post(req: Request) -> async Result<Response, ApiError>
+  ensures:
+    ok => result.status == 201
+    err(BadRequest(_)) => true
+  effects: [Db.read, Db.write]
+
+  let user_id = req.context("user_id") as UserId
+  let body = try parse_json_body::<CreatePostRequest>(req)
+  if body.title.is_empty()
+    return Err(ApiError.BadRequest("title is required"))
+  if body.title.len > 200
+    return Err(ApiError.BadRequest("title must be 200 characters or less"))
+  let now = Clock.now()
+  let post = Post
+    id: PostId(await Db.next_id("posts"))
+    author_id: user_id
+    title: body.title
+    body: body.body
+    published: false
+    created_at: now
+    updated_at: now
+  await Db.insert_post(post)
+  Ok(Response.json(201, post_to_response(post)))
+
+fn update_post(req: Request) -> async Result<Response, ApiError>
+  ensures:
+    ok => result.status == 200
+    err(Forbidden) => true
+    err(NotFound(_)) => true
+  effects: [Db.read, Db.write]
+
+  let user_id = req.context("user_id") as UserId
+  let id = PostId(try parse_path_param(req, "id"))
+  let post = await Db.find_post(id)
+  match post
+    | None => Err(ApiError.NotFound("post not found"))
+    | Some(p) =>
+      if p.author_id != user_id
+        Err(ApiError.Forbidden)
+      else
+        let body = try parse_json_body::<UpdatePostRequest>(req)
+        let updated = Post
+          ..p
+          title: body.title.unwrap_or(p.title)
+          body: body.body.unwrap_or(p.body)
+          published: body.published.unwrap_or(p.published)
+          updated_at: Clock.now()
+        await Db.update_post(updated)
+        Ok(Response.json(200, post_to_response(updated)))
+
+fn delete_post(req: Request) -> async Result<Response, ApiError>
+  ensures:
+    ok => result.status == 204
+    err(Forbidden) => true
+    err(NotFound(_)) => true
+  effects: [Db.read, Db.write]
+
+  let user_id = req.context("user_id") as UserId
+  let id = PostId(try parse_path_param(req, "id"))
+  let post = await Db.find_post(id)
+  match post
+    | None => Err(ApiError.NotFound("post not found"))
+    | Some(p) =>
+      if p.author_id != user_id
+        Err(ApiError.Forbidden)
+      else
+        await Db.delete_post(id)
+        Ok(Response.new(204, ""))
+
+# ─── Server Lifecycle ───
+
+state_machine ServerState
+  states: [Starting, Running, Draining, Stopped]
+  transitions:
+    Starting  --on_ready-->     Running
+    Running   --on_shutdown-->   Draining
+    Draining  --on_drained-->    Stopped
+  initial: Starting
+  terminal: [Stopped]
+
+type Server
+  invariant: self.config.worker_count > 0
+
+  config: ServerConfig
+  listener: TcpListener
+  state: ServerState
+  active_connections: RwLock<Int>
+  shutdown_signal: Channel<Unit>
+
+fn start(config: ServerConfig) -> async Result<Server, ApiError>
+  requires:
+    config.port > 0
+    config.worker_count > 0
+  ensures:
+    ok => result.state == ServerState.Running
+  effects: [Net.listen, Log.write]
+
+  let listener = match await TcpListener.bind(config.host, config.port)
+    | Ok(l) => l
+    | Err(e) => return Err(ApiError.Internal("failed to bind: " ++ e.to_string()))
+  let server = Server
+    config: config
+    listener: listener
+    state: ServerState.Starting
+    active_connections: RwLock.new(0)
+    shutdown_signal: Channel.new()
+  info("server_started", host: config.host, port: config.port, workers: config.worker_count)
+  server.state = ServerState.Running
+  Ok(server)
+
+fn run(self: mut Server, handler: fn(Request) -> async Response) -> async Unit
+  ensures: self.state == ServerState.Stopped
+  effects: [Net.listen, Net.send, Log.write]
+
+  let limiter = new_rate_limiter(self.config.rate_limit)
+  let middleware_chain = compose_middleware([
+    logging_middleware,
+    rate_limit_middleware(limiter),
+  ])
+
+  scope workers
+    for _ in 0..self.config.worker_count
+      spawn workers async
+        loop
+          select
+            | conn = await self.listener.accept() =>
+              let count = self.active_connections.write()
+              if count.value >= self.config.max_connections
+                conn.close()
+                warn("connection_rejected", reason: "max_connections")
+              else
+                count.value = count.value + 1
+                spawn workers async
+                  let response = await middleware_chain(conn.request(), handler)
+                  await conn.send(response)
+                  conn.close()
+                  let count = self.active_connections.write()
+                  count.value = count.value - 1
+            | _ = await self.shutdown_signal.recv() =>
+              break
+
+  self.state = ServerState.Draining
+  info("server_draining", active: self.active_connections.read().value)
+  await drain(self)
+  self.state = ServerState.Stopped
+  info("server_stopped")
+
+fn shutdown(self: mut Server) -> async Unit
+  ensures: self.state == ServerState.Draining or self.state == ServerState.Stopped
+  effects: [Log.write]
+
+  info("shutdown_requested")
+  self.shutdown_signal.send(())
+
+fn drain(self: mut Server) -> async Unit
+  ensures: self.active_connections.read().value == 0
+
+  let deadline = Clock.now().add(self.config.shutdown_timeout)
+  loop
+    let active = self.active_connections.read().value
+    if active == 0
+      break
+    if Clock.now() >= deadline
+      warn("drain_timeout", remaining_connections: active)
+      break
+    await sleep(Duration.millis(100))
+
+# ─── Helpers ───
+
+fn post_to_response(p: Post) -> PostResponse = PostResponse
+  id: p.id
+  author: ""
+  title: p.title
+  body: p.body
+  published: p.published
+  created_at: p.created_at.to_rfc3339()
+
+fn parse_path_param(req: Request, name: String) -> Result<Int, ApiError>
+  match req.path_param(name)
+    | None => Err(ApiError.BadRequest("missing path parameter: " ++ name))
+    | Some(s) => match Int.parse(s)
+      | Ok(n) => Ok(n)
+      | Err(_) => Err(ApiError.BadRequest("invalid integer: " ++ name))
+
+fn parse_json_body<T: FromJson>(req: Request) -> Result<T, ApiError>
+  match Json.parse(req.body())
+    | Err(e) => Err(ApiError.BadRequest("invalid JSON: " ++ e.to_string()))
+    | Ok(json) => match T.from_json(json)
+      | Err(e) => Err(ApiError.BadRequest("invalid request body: " ++ e.to_string()))
+      | Ok(val) => Ok(val)
+
+fn compose_middleware(layers: Vec<Middleware>) -> Middleware
+  layers.fold_right(fn(mw, next) => fn(req) => mw(req, next))

@@ -1,6 +1,6 @@
 # 4. Type System
 
-This chapter specifies the Monel type system, including primitive and composite types, structural and nominal typing, refinement types, generics, traits, ownership and borrowing, type inference, and the relationship between intent-declared types and implementation types.
+This chapter specifies the Monel type system, including primitive and composite types, structural and nominal typing, refinement types, generics, traits, ownership and borrowing, type inference, and the relationship between contracts and implementation.
 
 ---
 
@@ -8,9 +8,9 @@ This chapter specifies the Monel type system, including primitive and composite 
 
 The Monel type system is designed around three goals:
 
-1. **Expressiveness for intent** — types in the intent layer describe *what* data means, not just what shape it has. Refinement types, algebraic constraints, and semantic annotations let humans specify invariants that the compiler and parity checker enforce.
+1. **Expressiveness** — types describe *what* data means, not just what shape it has. Refinement types, algebraic constraints, and contracts let authors specify invariants that the compiler enforces.
 
-2. **Writability for LLMs** — the implementation layer uses standard, predictable type syntax. Type inference within function bodies reduces boilerplate. Explicit signatures at function boundaries provide unambiguous context for code generation.
+2. **Writability** — the type system uses standard, predictable syntax. Type inference within function bodies reduces boilerplate. Explicit signatures at function boundaries provide unambiguous context for code generation.
 
 3. **Zero-cost safety** — ownership and borrowing eliminate garbage collection. Refinement types are verified at compile time where possible, with optional runtime checks. The type system catches errors that would otherwise require tests.
 
@@ -305,7 +305,7 @@ struct Point
 
 ### 4.6.3 Rationale
 
-Intent files often specify domain-specific types like `Port`, `UserId`, `Email`. These should not be accidentally mixed with raw `Int` or `String` values. `distinct type` is the mechanism that enforces this in the implementation layer. The parity checker verifies that types declared in intent as semantically distinct are implemented as `distinct type` (see Chapter 6, Parity).
+Domain-specific types like `Port`, `UserId`, `Email` should not be accidentally mixed with raw `Int` or `String` values. `distinct type` enforces this. The compiler verifies that types declared as semantically distinct are implemented as `distinct type`.
 
 ---
 
@@ -360,12 +360,11 @@ fn area(s: Shape) -> Float
 
 ### 4.8.2 Enums with Constraints
 
-Enum variants can carry constraints in the intent layer that are enforced by the parity checker:
+Enum variants can carry contracts that are enforced by the compiler:
 
 ```
-// In .mn.intent:
-intent type Shape
-  does: "Represents geometric shapes with valid dimensions"
+type Shape
+  doc: "Represents geometric shapes with valid dimensions"
   variants:
     Circle:
       radius: Float where radius > 0
@@ -377,7 +376,7 @@ intent type Shape
       where: a + b > c and b + c > a and a + c > b
 ```
 
-In `@strict` mode, these constraints become compile-time proof obligations. In lightweight mode, they generate runtime validation in constructors.
+These constraints become compile-time proof obligations when preconditions are statically provable. Otherwise, they generate runtime validation in constructors.
 
 ### 4.8.3 Recursive Enums
 
@@ -394,7 +393,7 @@ enum Expr
 
 ## 4.9 Refinement Types
 
-Refinement types allow constraining a type's values with a predicate. They are declared in the intent layer and enforced according to the verification tier.
+Refinement types allow constraining a type's values with a predicate. They are declared as contracts and enforced according to the verification tier.
 
 ### 4.9.1 Syntax
 
@@ -410,7 +409,7 @@ The keyword `value` refers to the value being constrained. The `where` clause co
 
 ### 4.9.2 Compound Refinements
 
-Refinement predicates support `and`, `or`, `not`, comparisons, arithmetic, method calls on the value, and quantifiers (for `@strict` mode):
+Refinement predicates support `and`, `or`, `not`, comparisons, arithmetic, method calls on the value, and quantifiers:
 
 ```
 type ValidEmail = String
@@ -429,8 +428,8 @@ Refinement types are checked differently depending on the verification tier:
 | Tier | Behavior |
 |------|----------|
 | Lightweight (default) | Refinement predicates are checked at construction time via runtime assertions. The compiler inserts validation code at every point where a refined type is constructed. |
-| `@strict` | Refinement predicates are discharged as SMT proof obligations. The compiler generates Z3 queries to prove that the predicate holds for all possible inputs at the construction site. If the solver cannot prove it, compilation fails with a diagnostic. |
-| `@strict` with `--smt-timeout` | Same as `@strict`, but the solver is given a time budget. Unresolved obligations are reported as warnings, not errors. |
+| With `requires`/`ensures` contracts | Refinement predicates are discharged as SMT proof obligations. The compiler generates Z3 queries to prove that the predicate holds for all possible inputs at the construction site. If the solver cannot prove it, compilation fails with a diagnostic. |
+| With `--smt-timeout` | Same as above, but the solver is given a time budget. Unresolved obligations are reported as warnings, not errors. |
 
 ### 4.9.4 Refinement Propagation
 
@@ -455,21 +454,19 @@ A refined type `T where P` is a subtype of `T`. A value of type `Port` can be us
 
 A refined type `T where P1 and P2` is a subtype of `T where P1`. More restrictive refinements are subtypes of less restrictive ones.
 
-### 4.9.6 Refinement Types in the Intent Layer
+### 4.9.6 Refinement Types as Contracts
 
-In the intent layer, refinement types express domain constraints:
+Refinement types express domain constraints directly in the type definition:
 
 ```
-intent fn connect
-  does: "Establish TCP connection to host on given port"
-  params:
-    host: String where value.len() > 0
-    port: Port
-  returns: Result<Connection, ConnectionError>
+fn connect(host: String, port: Port) -> Result<Connection, ConnectionError>
+  doc: "Establish TCP connection to host on given port"
   effects: [Net.connect]
+  requires: host.len() > 0
+  // ...
 ```
 
-The parity checker verifies that the implementation's parameter type for `port` is `Port` (or a type with an equivalent or stronger refinement).
+The compiler verifies that the parameter type for `port` is `Port` (or a type with an equivalent or stronger refinement).
 
 ---
 
@@ -908,57 +905,35 @@ const FACT_10: Int = factorial(10)
 
 ---
 
-## 4.16 Intent-Implementation Type Correspondence
+## 4.16 Type Contracts and Verification
 
-Types bridge the intent and implementation layers. The parity checker enforces correspondence.
+Types can carry contracts (refinements, field declarations) that the compiler verifies against the implementation.
 
-### 4.16.1 Intent Type Declarations
+### 4.16.1 Type Declarations with Contracts
 
-In `.mn.intent` files, types are declared with semantic annotations:
-
-```
-intent type Port
-  does: "A valid TCP/UDP port number"
-  base: Int
-  where: value >= 1 and value <= 65535
-
-intent type UserProfile
-  does: "Complete user profile for display"
-  fields:
-    id: UserId
-    name: NonEmptyString
-    email: ValidEmail
-    created_at: Timestamp
-```
-
-### 4.16.2 Implementation Type Requirements
-
-The implementation must declare types that match:
+In `.mn` files, types are declared with optional documentation and constraints:
 
 ```
-// Must be a distinct or refined type over Int with compatible constraint
 type Port = Int where value >= 1 and value <= 65535
+  doc: "A valid TCP/UDP port number"
 
-// Must be a struct with exactly these fields and compatible types
 struct UserProfile
+  doc: "Complete user profile for display"
   id: UserId
   name: NonEmptyString
   email: ValidEmail
   created_at: Timestamp
 ```
 
-### 4.16.3 Parity Rules for Types
+### 4.16.2 Compiler Verification Rules
 
-The structural parity checker (Stage 2) verifies:
+The compiler verifies:
 
-1. **Existence**: Every `intent type` has a corresponding implementation type.
-2. **Base type match**: The underlying type agrees (e.g., both based on `Int`).
-3. **Field match**: Struct fields match in name, type, and order.
-4. **Refinement compatibility**: The implementation's `where` clause must be at least as restrictive as the intent's. (The implementation may add additional constraints.)
-5. **Nominal agreement**: If the intent declares a type as semantically distinct (e.g., `UserId` vs. `OrderId`), the implementation must use `distinct type`.
-6. **Variant match**: For enum types, all intent-declared variants must exist in the implementation with matching field types.
-
-See Chapter 6 (Parity) for the full specification of type parity rules.
+1. **Base type match**: The underlying type agrees (e.g., both based on `Int`).
+2. **Field match**: Struct fields match in name, type, and order.
+3. **Refinement enforcement**: The `where` clause is enforced at construction sites — either via runtime checks or SMT proof obligations when `requires`/`ensures` contracts are present.
+4. **Nominal agreement**: Types declared as semantically distinct (e.g., `UserId` vs. `OrderId`) must use `distinct type`.
+5. **Variant match**: For enum types, all declared variants must exist with matching field types.
 
 ---
 
@@ -976,7 +951,7 @@ See Chapter 6 (Parity) for the full specification of type parity rules.
 | Explicit boundaries | Function signatures require type annotations |
 | Local inference | Types within function bodies are inferred |
 | Effect awareness | Pointer dereference requires `unsafe` effect |
-| Parity correspondence | Intent types and implementation types must agree |
+| Contract enforcement | Type contracts are verified by the compiler |
 
 ---
 

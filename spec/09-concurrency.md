@@ -2,7 +2,7 @@
 
 ## 9.1 Overview
 
-Monel provides structured concurrency with full effect tracking. Asynchronous execution is modeled as an effect -- `async` -- that must be declared in intent files. The concurrency model combines:
+Monel provides structured concurrency with full effect tracking. Asynchronous execution is modeled as an effect -- `async` -- that must be declared on function signatures. The concurrency model combines:
 
 1. **Structured scoping** -- child tasks cannot outlive their parent scope.
 2. **Effect tracking** -- the `async` effect propagates through the call graph like any other effect.
@@ -13,31 +13,32 @@ The compiler enforces these properties at compile time.
 
 ## 9.2 The `async` Effect
 
-Asynchronous execution is an effect. Any function that performs asynchronous work must declare the `async` effect in its intent.
+Asynchronous execution is an effect. Any function that performs asynchronous work must declare the `async` effect.
 
 ### 9.2.1 Declaration
 
 ```
-intent fn fetch_data(url: Url) -> Result<Data, HttpError>
-  does: "fetches data from a remote URL"
+fn fetch_data(url: Url) -> Result<Data, HttpError>
+  doc: "fetches data from a remote URL"
   effects: [async, Http.send]
+  // ...
 ```
 
 The `async` effect is contagious: any function that calls an `async` function must itself be `async`. The compiler verifies this transitively.
 
 ### 9.2.2 Colored Functions
 
-Monel uses colored functions -- `async` and non-`async` functions are distinct types. A non-async function cannot call an async function without an explicit bridge. This is intentional: it makes the async boundary visible in the code and in the intent layer.
+Monel uses colored functions -- `async` and non-`async` functions are distinct types. A non-async function cannot call an async function without an explicit bridge. This is intentional: it makes the async boundary visible in the code.
 
 ```
 # This is a compile error:
-intent fn process(url: Url) -> Result<Data, Error>
-  does: "processes data from URL"
+fn process(url: Url) -> Result<Data, Error>
+  doc: "processes data from URL"
   effects: [Http.send]  # missing `async`!
 
 # The compiler reports:
 error: function calls async function but does not declare `async` effect
-  --> src/processor/mod.mn.intent:3:14
+  --> src/processor/mod.mn:3:14
    |
  3 |   effects: [Http.send]
    |             ^^^^^^^^^ Http.send requires `async`
@@ -139,17 +140,18 @@ fn pipeline(input: Vec<Data>) -> Result<Vec<Output>, Error>
     Ok(transformed)
 ```
 
-### 9.3.3 Intent for Scoped Concurrency
+### 9.3.3 Contracts for Scoped Concurrency
 
-Concurrent work is reflected in intent via the `async` effect and descriptive documentation:
+Concurrent work is reflected via the `async` effect and descriptive documentation:
 
 ```
-intent fn process_batch(urls: Vec<Url>) -> Result<Vec<Data>, Error>
-  does: "fetches and processes all URLs concurrently"
+fn process_batch(urls: Vec<Url>) -> Result<Vec<Data>, Error>
+  doc: "fetches and processes all URLs concurrently"
   effects: [async, Http.send]
+  // ...
 ```
 
-The intent does not need to specify the concurrency strategy (scope, spawn count, etc.). That is an implementation detail. The `async` effect is sufficient to signal that concurrency occurs.
+The function signature does not need to specify the concurrency strategy (scope, spawn count, etc.). That is an implementation detail. The `async` effect is sufficient to signal that concurrency occurs.
 
 ## 9.4 Spawn
 
@@ -251,7 +253,7 @@ use std/async {UnboundedChannel}
 let (tx, rx) = UnboundedChannel.new::<LogEntry>()
 ```
 
-Unbounded channels never block on `send`. They should be used only when backpressure is not a concern (e.g., logging, metrics). The compiler emits a lint warning if `UnboundedChannel` is used in performance-sensitive code paths identified by `@strict` intent.
+Unbounded channels never block on `send`. They should be used only when backpressure is not a concern (e.g., logging, metrics). The compiler emits a lint warning if `UnboundedChannel` is used in performance-sensitive code paths.
 
 ### 9.5.4 `Oneshot<T>`
 
@@ -587,17 +589,20 @@ scope |s|
 
 ### 9.10.3 Cancellation Safety
 
-A function is **cancellation-safe** if being cancelled at any await point does not leave the system in an inconsistent state. The compiler does not verify cancellation safety automatically (it is undecidable in general), but intent can document it:
+A function is **cancellation-safe** if being cancelled at any await point does not leave the system in an inconsistent state. The compiler does not verify cancellation safety automatically (it is undecidable in general), but it can be documented:
 
 ```
-@strict
-intent fn transfer_funds(from: Account, to: Account, amount: Money) -> Result<(), TransferError>
-  does: "transfers funds between accounts atomically"
+fn transfer_funds(from: Account, to: Account, amount: Money) -> Result<(), TransferError>
+  doc: "transfers funds between accounts atomically"
   effects: [async, Db.write]
+  requires:
+    amount.value > 0
   cancellation: safe  # this function can be safely cancelled at any point
+
+  // implementation...
 ```
 
-The `cancellation: safe` annotation is a human/LLM-facing declaration. It signals to code reviewers and generators that the function handles cancellation correctly (e.g., by using database transactions).
+The `cancellation: safe` annotation is a declaration for code reviewers and generators. It signals that the function handles cancellation correctly (e.g., by using database transactions).
 
 ### 9.10.4 Cancellation Tokens
 
@@ -675,12 +680,13 @@ fn terminal_loop(pty: Pty, renderer: Renderer) -> Result<(), Error>
         try renderer.flush()
 ```
 
-### 9.11.4 Intent for Event-Driven Functions
+### 9.11.4 Contracts for Event-Driven Functions
 
 ```
-intent fn run_terminal(config: TerminalConfig) -> Result<(), TerminalError>
-  does: "runs the terminal event loop, handling input, output, and rendering"
+fn run_terminal(config: TerminalConfig) -> Result<(), TerminalError>
+  doc: "runs the terminal event loop, handling input, output, and rendering"
   effects: [async, Pty.read, Pty.write, Terminal.render, Signal.handle]
+  // ...
 ```
 
 ## 9.12 Timeout and Deadline Support
@@ -719,17 +725,19 @@ fn batch_process(items: Vec<Item>) -> Result<Vec<Output>, Error>
 
 Deadlines are more appropriate than timeouts when processing multiple items: the total time budget is fixed regardless of how many items have been processed.
 
-### 9.12.3 Timeout in Intent
+### 9.12.3 Timeout in Function Contracts
 
-Timeouts can be documented in intent for clarity:
+Timeouts can be documented in function contracts for clarity:
 
 ```
-intent fn fetch_data(url: Url) -> Result<Data, FetchError>
-  does: "fetches data with a 10-second timeout"
+fn fetch_data(url: Url) -> Result<Data, FetchError>
+  doc: "fetches data with a 10-second timeout"
   effects: [async, Http.send]
   fails:
     Timeout: "request did not complete within 10 seconds"
     HttpError: "HTTP request failed"
+
+  // implementation...
 ```
 
 ## 9.13 Concurrency Patterns
@@ -948,9 +956,9 @@ fn process_image(image: Image) -> Result<Image, Error>
 
 The compiler emits a lint warning if a function known to block (e.g., `std/io/read_file_sync`) is called inside an `async` context without `spawn_blocking`.
 
-### 9.15.3 Runtime in Intent
+### 9.15.3 Runtime Configuration in Project
 
-The runtime configuration is not part of intent -- it is a deployment concern. However, the effects system captures whether a function uses async, and `monel.project` can specify default runtime settings:
+The runtime configuration is a deployment concern. The effects system captures whether a function uses async, and `monel.project` can specify default runtime settings:
 
 ```toml
 [runtime]
@@ -960,26 +968,25 @@ io = true
 timer = true
 ```
 
-## 9.16 Concurrency in Intent
+## 9.16 Concurrency in Function Contracts
 
-### 9.16.1 What Intent Captures
+### 9.16.1 What Contracts Capture
 
-Intent captures the **what**, not the **how** of concurrency:
+Contracts capture the **what**, not the **how** of concurrency:
 
 ```
 # Good: declares that concurrency occurs
-intent fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
-  does: "processes all items concurrently with a limit of 10"
+fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
+  doc: "processes all items concurrently with a limit of 10"
   effects: [async, Db.write]
 
-# The implementation chooses the strategy:
-fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
+  // The implementation chooses the strategy:
   items.concurrent_map(|item| process_item(item))
     .with_limit(10)
     .collect()
 ```
 
-### 9.16.2 What Intent Does NOT Capture
+### 9.16.2 What Contracts Do NOT Capture
 
 - The specific concurrency primitive used (spawn, channel, select).
 - The number of worker tasks.
@@ -987,13 +994,10 @@ fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
 - Lock granularity.
 - Runtime configuration.
 
-These are implementation details. If they are architecturally significant, they can be documented in the `does:` description, but the compiler does not enforce them.
+These are implementation details. If they are architecturally significant, they can be documented in the `doc:` description, but the compiler does not enforce them.
 
-### 9.16.3 Parity Checking for Concurrency
+### 9.16.3 Compiler Verification for Concurrency
 
-The parity checker (Stage 4) verifies:
-1. If intent declares `async` effect, the implementation uses async operations.
-2. If intent says "processes items concurrently", the implementation does not process them sequentially.
-3. If intent specifies a concurrency limit in the description, the implementation respects it.
-
-These semantic checks rely on the LLM-powered parity engine and are only active when `[llm]` is configured.
+The compiler verifies:
+1. If the function declares the `async` effect, the implementation uses async operations.
+2. Effect declarations are consistent with the actual effects inferred from the function body.

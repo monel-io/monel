@@ -1,6 +1,10 @@
+# Stack — a generic, bounded stack data structure
+
 use std/collections {Array}
 
 type Stack<T>
+  invariant: self.len <= self.capacity
+
   data: Array<T>
   len: Int
   capacity: Int
@@ -9,74 +13,59 @@ type StackError
   | Overflow
   | Underflow
 
-fn new @intent("new")
-  params: capacity: Int
-  returns: Stack<T>
-  effects: [pure]
-  body:
-    Stack
-      data: Array.with_capacity(capacity)
-      len: 0
-      capacity: capacity
+fn new(capacity: Int) -> Stack<T>
+  requires: capacity > 0
+  ensures:
+    result.len == 0
+    result.capacity == capacity
 
-fn push @intent("push")
-  params: self: mut Stack<T>, val: T
-  returns: Result<(), StackError>
-  effects: [pure]
-  body:
-    if self.len == self.capacity
-      Err(StackError.Overflow)
-    else
-      self.data.set(self.len, val)
-      self.len = self.len + 1
-      Ok(())
+  Stack
+    data: Array.with_capacity(capacity)
+    len: 0
+    capacity: capacity
 
-fn pop @intent("pop")
-  params: self: mut Stack<T>
-  returns: Result<T, StackError>
-  effects: [pure]
-  body:
-    if self.len == 0
-      Err(StackError.Underflow)
-    else
-      self.len = self.len - 1
-      let val = self.data.get(self.len)
-      Ok(val)
+fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
+  ensures:
+    ok => self.len == old(self.len) + 1
+    ok => self.peek() == Some(val)
+    err(Overflow) => self == old(self)
 
-fn peek @intent("peek")
-  params: self: Stack<T>
-  returns: Option<T>
-  effects: [pure]
-  body:
-    if self.len == 0
-      None
-    else
-      Some(self.data.get(self.len - 1))
+  if self.len == self.capacity
+    Err(StackError.Overflow)
+  else
+    self.data.set(self.len, val)
+    self.len = self.len + 1
+    Ok(())
 
-fn len @intent("len")
-  params: self: Stack<T>
-  returns: Int
-  effects: [pure]
-  body:
-    self.len
+fn pop(self: mut Stack<T>) -> Result<T, StackError>
+  ensures:
+    ok => self.len == old(self.len) - 1
+    err(Underflow) => self == old(self)
 
-fn is_empty @intent("is_empty")
-  params: self: Stack<T>
-  returns: Bool
-  effects: [pure]
-  body:
+  if self.len == 0
+    Err(StackError.Underflow)
+  else
+    self.len = self.len - 1
+    let val = self.data.get(self.len)
+    Ok(val)
+
+fn peek(self: Stack<T>) -> Option<T>
+  ensures:
+    self.len > 0 => result == Some(self.top)
+    self.len == 0 => result == None
+
+  if self.len == 0
+    None
+  else
+    Some(self.data.get(self.len - 1))
+
+fn len(self: Stack<T>) -> Int = self.len
+fn is_empty(self: Stack<T>) -> Bool = self.len == 0
+fn is_full(self: Stack<T>) -> Bool = self.len == self.capacity
+
+fn clear(self: mut Stack<T>) -> Unit
+  ensures:
     self.len == 0
+    self.capacity == old(self.capacity)
 
-fn is_full @intent("is_full")
-  params: self: Stack<T>
-  returns: Bool
-  effects: [pure]
-  body:
-    self.len == self.capacity
-
-fn clear @intent("clear")
-  params: self: mut Stack<T>
-  returns: Unit
-  effects: [pure]
-  body:
-    self.len = 0
+  self.len = 0

@@ -1,3 +1,5 @@
+# Terminal — raw terminal I/O with PTY, ANSI parsing, and state machine
+
 use std/terminal {Pty, PtyConfig, RawMode, AnsiParser, AnsiEvent}
 use std/render {Surface, Cell as RenderCell, Color}
 use std/signal {Signal}
@@ -27,7 +29,18 @@ type TerminalError
   | IoError(String)
   | InvalidSize
 
+type TerminalState
+  | Uninitialized
+  | Running
+  | Suspended
+  | ShuttingDown
+  | Closed
+
 type Terminal
+  invariant:
+    self.cursor_row < self.rows
+    self.cursor_col < self.cols
+
   pty: Pty
   grid: Grid<Cell>
   scrollback_buffer: Vec<Array<Cell>>
@@ -39,177 +52,192 @@ type Terminal
   parser: AnsiParser
   state: TerminalState
 
-type TerminalState
-  | Uninitialized
-  | Running
-  | Suspended
-  | ShuttingDown
-  | Closed
+state_machine TerminalLifecycle for Terminal.state
+  states: [Uninitialized, Running, Suspended, ShuttingDown, Closed]
+  transitions:
+    Uninitialized --init-->        Running
+    Running       --suspend-->     Suspended
+    Running       --shutdown-->    ShuttingDown
+    Suspended     --resume-->      Running
+    Suspended     --shutdown-->    ShuttingDown
+    ShuttingDown  --on_closed-->   Closed
+  initial: Uninitialized
+  terminal: [Closed]
 
-fn init @intent("init")
-  params: config: TerminalConfig
-  returns: Result<Terminal, TerminalError>
+layout TerminalView
+  regions:
+    terminal_grid: fill remaining, scrollable
+    status_bar: height 1 row, fixed, bottom
+  focus_order: [terminal_grid]
+  responsive:
+    width < 40 cols => hide status_bar
+
+fn init(config: TerminalConfig) -> Result<Terminal, TerminalError>
+  requires:
+    config.rows > 0
+    config.cols > 0
+    config.scrollback >= 0
+  ensures:
+    ok => result.rows == config.rows
+    ok => result.cols == config.cols
+    ok => result.cursor_row == 0
+    ok => result.cursor_col == 0
+    ok => result.state == TerminalState.Running
   effects: [unsafe, Fs.read, Fs.write]
-  body:
-    if config.rows <= 0 or config.cols <= 0
-      return Err(TerminalError.InvalidSize)
-    let pty_config = PtyConfig
-      rows: config.rows
-      cols: config.cols
-      shell: config.shell
-    let pty = match Pty.open(pty_config)
-      | Ok(p) => p
-      | Err(_) => return Err(TerminalError.PtyFailed)
-    let default_cell = Cell
-      char: ' '
-      fg: Color.default_fg()
-      bg: Color.default_bg()
-      bold: false
-      italic: false
-      underline: false
-    let grid = Grid.fill(config.rows, config.cols, default_cell)
-    Ok(Terminal
-      pty: pty
-      grid: grid
-      scrollback_buffer: Vec.new()
-      rows: config.rows
-      cols: config.cols
-      cursor_row: 0
-      cursor_col: 0
-      cursor_style: CursorStyle.Block
-      parser: AnsiParser.new()
-      state: TerminalState.Running)
+  panics: never
 
-fn write_input @intent("write_input")
-  params: self: mut Terminal, data: Array<Byte>
-  returns: Result<(), TerminalError>
+  if config.rows <= 0 or config.cols <= 0
+    return Err(TerminalError.InvalidSize)
+  let pty_config = PtyConfig
+    rows: config.rows
+    cols: config.cols
+    shell: config.shell
+  let pty = match Pty.open(pty_config)
+    | Ok(p) => p
+    | Err(_) => return Err(TerminalError.PtyFailed)
+  let default_cell = Cell
+    char: ' '
+    fg: Color.default_fg()
+    bg: Color.default_bg()
+    bold: false
+    italic: false
+    underline: false
+  let grid = Grid.fill(config.rows, config.cols, default_cell)
+  Ok(Terminal
+    pty: pty
+    grid: grid
+    scrollback_buffer: Vec.new()
+    rows: config.rows
+    cols: config.cols
+    cursor_row: 0
+    cursor_col: 0
+    cursor_style: CursorStyle.Block
+    parser: AnsiParser.new()
+    state: TerminalState.Running)
+
+fn write_input(self: mut Terminal, data: Array<Byte>) -> Result<(), TerminalError>
+  ensures: err => self == old(self)
   effects: [unsafe, Fs.write]
-  body:
-    match self.pty.write(data)
-      | Ok(_) => Ok(())
-      | Err(e) => Err(TerminalError.IoError(e.to_string()))
 
-fn read_output @intent("read_output")
-  params: self: mut Terminal
-  returns: Result<Array<Byte>, TerminalError>
+  match self.pty.write(data)
+    | Ok(_) => Ok(())
+    | Err(e) => Err(TerminalError.IoError(e.to_string()))
+
+fn read_output(self: mut Terminal) -> Result<Array<Byte>, TerminalError>
+  ensures:
+    ok => result.len > 0
+    err => self == old(self)
   effects: [unsafe, Fs.read]
-  body:
-    match self.pty.read()
-      | Ok(data) => Ok(data)
-      | Err(e) => Err(TerminalError.IoError(e.to_string()))
 
-fn process_output @intent("process_output")
-  params: self: mut Terminal, data: Array<Byte>
-  returns: Unit
-  effects: [pure]
-  body:
-    let events = self.parser.parse(data)
-    for event in events
-      match event
-        | AnsiEvent.Print(ch) =>
-          self.grid.set(self.cursor_row, self.cursor_col, Cell
-            char: ch
-            fg: self.parser.current_fg()
-            bg: self.parser.current_bg()
-            bold: self.parser.is_bold()
-            italic: self.parser.is_italic()
-            underline: self.parser.is_underline())
-          self.advance_cursor()
-        | AnsiEvent.Newline =>
-          self.cursor_col = 0
-          if self.cursor_row == self.rows - 1
-            self.scroll_up()
-          else
-            self.cursor_row = self.cursor_row + 1
-        | AnsiEvent.CarriageReturn =>
-          self.cursor_col = 0
-        | AnsiEvent.CursorMove(row, col) =>
-          self.cursor_row = Int.min(row, self.rows - 1)
-          self.cursor_col = Int.min(col, self.cols - 1)
-        | AnsiEvent.ClearScreen =>
-          self.grid.fill(Cell
-            char: ' '
-            fg: Color.default_fg()
-            bg: Color.default_bg()
-            bold: false
-            italic: false
-            underline: false)
-        | AnsiEvent.SetStyle(style) =>
-          self.parser.apply_style(style)
+  match self.pty.read()
+    | Ok(data) => Ok(data)
+    | Err(e) => Err(TerminalError.IoError(e.to_string()))
 
-fn render @intent("render")
-  params: self: Terminal, surface: mut Surface
-  returns: Unit
-  effects: [pure]
-  body:
-    for row in 0..self.rows
-      for col in 0..self.cols
-        let cell = self.grid.get(row, col)
-        surface.set(row, col, RenderCell
-          char: cell.char
-          fg: cell.fg
-          bg: cell.bg
-          bold: cell.bold
-          italic: cell.italic
-          underline: cell.underline)
-    surface.set_cursor(self.cursor_row, self.cursor_col, self.cursor_style)
+fn process_output(self: mut Terminal, data: Array<Byte>) -> Unit
+  ensures:
+    self.cursor_row < self.rows
+    self.cursor_col < self.cols
 
-fn resize @intent("resize")
-  params: self: mut Terminal, rows: Int, cols: Int
-  returns: Result<(), TerminalError>
-  effects: [unsafe, Signal]
-  body:
-    match self.pty.resize(rows, cols)
-      | Ok(_) =>
-        self.grid.resize(rows, cols, Cell
+  let events = self.parser.parse(data)
+  for event in events
+    match event
+      | AnsiEvent.Print(ch) =>
+        self.grid.set(self.cursor_row, self.cursor_col, Cell
+          char: ch
+          fg: self.parser.current_fg()
+          bg: self.parser.current_bg()
+          bold: self.parser.is_bold()
+          italic: self.parser.is_italic()
+          underline: self.parser.is_underline())
+        advance_cursor(self)
+      | AnsiEvent.Newline =>
+        self.cursor_col = 0
+        if self.cursor_row == self.rows - 1
+          scroll_up(self)
+        else
+          self.cursor_row = self.cursor_row + 1
+      | AnsiEvent.CarriageReturn =>
+        self.cursor_col = 0
+      | AnsiEvent.CursorMove(row, col) =>
+        self.cursor_row = Int.min(row, self.rows - 1)
+        self.cursor_col = Int.min(col, self.cols - 1)
+      | AnsiEvent.ClearScreen =>
+        self.grid.fill(Cell
           char: ' '
           fg: Color.default_fg()
           bg: Color.default_bg()
           bold: false
           italic: false
           underline: false)
-        self.rows = rows
-        self.cols = cols
-        self.cursor_row = Int.min(self.cursor_row, rows - 1)
-        self.cursor_col = Int.min(self.cursor_col, cols - 1)
-        Ok(())
-      | Err(e) => Err(TerminalError.IoError(e.to_string()))
+      | AnsiEvent.SetStyle(style) =>
+        self.parser.apply_style(style)
 
-fn shutdown @intent("shutdown")
-  params: self: mut Terminal
-  returns: Unit
+fn render(self: Terminal, surface: mut Surface) -> Unit
+  for row in 0..self.rows
+    for col in 0..self.cols
+      let cell = self.grid.get(row, col)
+      surface.set(row, col, RenderCell
+        char: cell.char
+        fg: cell.fg
+        bg: cell.bg
+        bold: cell.bold
+        italic: cell.italic
+        underline: cell.underline)
+  surface.set_cursor(self.cursor_row, self.cursor_col, self.cursor_style)
+
+fn resize(self: mut Terminal, rows: Int, cols: Int) -> Result<(), TerminalError>
+  requires:
+    rows > 0
+    cols > 0
+  ensures:
+    ok => self.rows == rows
+    ok => self.cols == cols
+  effects: [unsafe, Signal]
+
+  match self.pty.resize(rows, cols)
+    | Ok(_) =>
+      self.grid.resize(rows, cols, Cell
+        char: ' '
+        fg: Color.default_fg()
+        bg: Color.default_bg()
+        bold: false
+        italic: false
+        underline: false)
+      self.rows = rows
+      self.cols = cols
+      self.cursor_row = Int.min(self.cursor_row, rows - 1)
+      self.cursor_col = Int.min(self.cursor_col, cols - 1)
+      Ok(())
+    | Err(e) => Err(TerminalError.IoError(e.to_string()))
+
+fn shutdown(self: mut Terminal) -> Unit
+  ensures: self.state == TerminalState.Closed
   effects: [unsafe, Fs.write, Signal]
-  body:
-    self.state = TerminalState.ShuttingDown
-    self.pty.signal(Signal.SIGHUP)
-    self.pty.close()
-    self.state = TerminalState.Closed
 
-fn advance_cursor @no_intent
-  params: self: mut Terminal
-  returns: Unit
-  effects: [pure]
-  body:
-    self.cursor_col = self.cursor_col + 1
-    if self.cursor_col >= self.cols
-      self.cursor_col = 0
-      if self.cursor_row == self.rows - 1
-        self.scroll_up()
-      else
-        self.cursor_row = self.cursor_row + 1
+  self.state = TerminalState.ShuttingDown
+  self.pty.signal(Signal.SIGHUP)
+  self.pty.close()
+  self.state = TerminalState.Closed
 
-fn scroll_up @no_intent
-  params: self: mut Terminal
-  returns: Unit
-  effects: [pure]
-  body:
-    let top_row = self.grid.row(0)
-    self.scrollback_buffer.push(top_row)
-    self.grid.shift_up()
-    self.grid.fill_row(self.rows - 1, Cell
-      char: ' '
-      fg: Color.default_fg()
-      bg: Color.default_bg()
-      bold: false
-      italic: false
-      underline: false)
+# --- internal helpers (no contracts, not exported) ---
+
+fn advance_cursor(self: mut Terminal) -> Unit
+  self.cursor_col = self.cursor_col + 1
+  if self.cursor_col >= self.cols
+    self.cursor_col = 0
+    if self.cursor_row == self.rows - 1
+      scroll_up(self)
+    else
+      self.cursor_row = self.cursor_row + 1
+
+fn scroll_up(self: mut Terminal) -> Unit
+  let top_row = self.grid.row(0)
+  self.scrollback_buffer.push(top_row)
+  self.grid.shift_up()
+  self.grid.fill_row(self.rows - 1, Cell
+    char: ' '
+    fg: Color.default_fg()
+    bg: Color.default_bg()
+    bold: false
+    italic: false
+    underline: false)

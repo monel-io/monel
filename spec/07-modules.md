@@ -1,22 +1,27 @@
-# 7. Modules, Visibility, and Dependencies
+# 7. Modules
 
-## 7.1 Overview
+A module is a single `.mn` file. The module system maps filesystem paths to module paths and controls which symbols are visible across module boundaries.
 
-Monel uses a file-based module system where each module consists of an intent file and an implementation file. The module system is designed around three principles:
+---
 
-1. **Greppability** -- every symbol usage can be traced to its source with a simple text search.
-2. **Context window efficiency** -- module boundaries are sized so that an LLM can hold a complete module (intent + implementation) within a single context window.
-3. **Intent as API** -- a module's public API is defined entirely by its intent file; the implementation file is an internal concern.
+## 7.1 Design Principles
+
+1. **Greppability.** Every symbol usage can be traced to its source with a text search.
+2. **Context window efficiency.** Module boundaries are sized so that an LLM can hold a complete module within a single context window.
+3. **Contracts as API.** A module's public API consists of its exported function signatures and their associated contracts (`requires:`, `ensures:`, `effects:`, etc.).
+
+---
 
 ## 7.2 File Extensions
 
-| Extension      | Purpose                          | Written by  | Read by     |
-|----------------|----------------------------------|-------------|-------------|
-| `.mn.intent`   | Module specification (API, contracts, effects) | Humans      | Compiler, LLMs, humans |
-| `.mn`          | Module implementation            | LLMs or humans | Compiler   |
-| `.mn.test`     | Module tests                     | LLMs or humans | Test runner |
+| Extension   | Purpose                                        |
+|-------------|------------------------------------------------|
+| `.mn`       | Module source (contracts, types, implementation) |
+| `.mn.test`  | Module tests                                   |
 
-Every module MUST have exactly one `.mn.intent` file and exactly one `.mn` file. The `.mn.test` file is optional but strongly recommended. A `.mn` file without a corresponding `.mn.intent` file is a compilation error. A `.mn.intent` file without a corresponding `.mn` file is valid during development (the compiler reports it as "unimplemented").
+Every module is a single `.mn` file containing both contracts and implementation. The `.mn.test` file is optional.
+
+---
 
 ## 7.3 Directory Structure
 
@@ -32,43 +37,41 @@ my-project/
     cache/                   # auto-generated: compilation cache
     tools/                   # auto-generated: project-scoped tool binaries
   src/
-    main.mn.intent           # entry point intent
-    main.mn                  # entry point implementation
+    main.mn                  # entry point
     terminal/
-      mod.mn.intent          # terminal module root intent
-      mod.mn                 # terminal module root implementation
+      mod.mn                 # terminal module root
       mod.mn.test            # terminal module tests
-      pty.mn.intent          # terminal/pty submodule intent
-      pty.mn                 # terminal/pty submodule implementation
+      pty.mn                 # terminal/pty submodule
       pty.mn.test            # terminal/pty submodule tests
     renderer/
-      mod.mn.intent          # renderer module root intent
-      mod.mn                 # renderer module root implementation
+      mod.mn                 # renderer module root
       mod.mn.test            # renderer module tests
 ```
 
 ### 7.3.1 Module Root Files
 
-Each directory under `src/` that contains Monel source files MUST have a `mod.mn.intent` and `mod.mn` pair. These serve as the directory's module root and define what the directory exports. The top-level entry point uses `main.mn.intent` and `main.mn` instead of `mod`.
+Each directory under `src/` that contains Monel source files MUST have a `mod.mn` file. This file serves as the directory's module root and defines what the directory exports. The top-level entry point uses `main.mn` instead of `mod.mn`.
 
 ### 7.3.2 Nested Modules
 
 Modules nest according to directory structure. The module path mirrors the filesystem path:
 
-| Filesystem path                | Module path         |
-|--------------------------------|---------------------|
-| `src/main.mn`                  | `main`              |
-| `src/terminal/mod.mn`          | `terminal`          |
-| `src/terminal/pty.mn`          | `terminal/pty`      |
-| `src/renderer/mod.mn`         | `renderer`          |
+| Filesystem path              | Module path    |
+|------------------------------|----------------|
+| `src/main.mn`                | `main`         |
+| `src/terminal/mod.mn`        | `terminal`     |
+| `src/terminal/pty.mn`        | `terminal/pty` |
+| `src/renderer/mod.mn`        | `renderer`     |
+
+---
 
 ## 7.4 Visibility
 
-Visibility is declared exclusively in the intent file. The implementation file does not contain visibility modifiers.
+Visibility is controlled by the `exports` block declared in the `.mn` file.
 
 ### 7.4.1 Exports
 
-The `exports` block in a `.mn.intent` file declares the module's public API:
+The `exports` block at the top of a `.mn` file declares the module's public API:
 
 ```
 module terminal
@@ -82,9 +85,9 @@ exports:
 
 Only items listed in `exports` are accessible from outside the module. Everything else is module-internal.
 
-### 7.4.2 Internal Declarations
+### 7.4.2 Internal Items
 
-Items not listed in `exports` are internal. They can be explicitly grouped under an `internal` block for documentation clarity, but this is optional -- unlisted items are internal by default:
+Items not listed in `exports` are internal. They can be grouped under an `internal` block for documentation clarity, but this is optional -- unlisted items are internal by default:
 
 ```
 module terminal
@@ -101,7 +104,7 @@ internal:
 
 ### 7.4.3 Re-exports
 
-A module root (`mod.mn.intent`) can re-export items from submodules:
+A module root (`mod.mn`) can re-export items from submodules:
 
 ```
 module terminal
@@ -121,11 +124,11 @@ This allows `use terminal {Pty}` instead of requiring `use terminal/pty {Pty}`.
 
 1. `exports` items are visible to any module that imports this module.
 2. Internal items are visible only within the same module file and its tests.
-3. A `mod.mn` file can access internal items from submodules within the same directory only if those submodules explicitly grant `visible_to: parent` in their intent.
-4. Test files (`.mn.test`) have access to all internal items of the module they test.
+3. A `mod.mn` file can access internal items from submodules within the same directory only if those submodules explicitly grant `visible_to: parent`.
+4. Test files (`.mn.test`) have access to all items of the module they test, including internal items.
 
 ```
-# In pty.mn.intent
+# In pty.mn
 module terminal/pty
 
 exports:
@@ -135,6 +138,8 @@ exports:
 visible_to:
   parent: [RawPty, pty_buffer_size]
 ```
+
+---
 
 ## 7.5 Import Syntax
 
@@ -171,10 +176,10 @@ use db/pool {Config as DbConfig}
 ### 7.5.3 Greppability Guarantee
 
 Because every import names its items explicitly, any occurrence of a symbol in the codebase can be traced to its definition by searching for either:
-- Its declaration in an intent file, or
+- Its declaration in a `.mn` file, or
 - Its import via `use ... {SymbolName}`
 
-This property is maintained by the compiler. If a symbol is used but not imported or locally defined, the compiler emits an error with a suggestion of which `use` statement to add.
+The compiler maintains this property. If a symbol is used but not imported or locally defined, the compiler emits an error with a suggestion of which `use` statement to add.
 
 ### 7.5.4 Standard Library Imports
 
@@ -189,26 +194,32 @@ use std/async {spawn, Channel}
 
 A minimal prelude is automatically in scope for every module. The prelude includes: `Int`, `Float`, `Bool`, `String`, `Char`, `Byte`, `Unit`, `Never`, `Option`, `Result`, `Vec`, `Array`, `Map`, `Set`. All other types must be imported explicitly.
 
-## 7.6 Intent as Public API
+---
 
-When a dependency is added to a project, only the dependency's intent layer is visible to the consuming project. The implementation files of dependencies are never accessible.
+## 7.6 Module as Public API
+
+When a dependency is added to a project, consumers see only the dependency's exported function signatures and their contracts. Implementation details of dependencies are not accessible.
 
 This means:
-1. All public API documentation lives in the intent file.
-2. The intent file is the single source of truth for a module's contract.
-3. LLMs generating code against a dependency need only the intent file for full context.
-4. `monel query "how do I make an HTTP request?"` searches intent files, not implementations.
+1. All public API documentation lives in the contracts attached to exported functions.
+2. Exported signatures and contracts are the single source of truth for a module's API.
+3. LLMs generating code against a dependency need only the exported contracts for full context.
+4. `monel query "how do I make an HTTP request?"` searches exported contracts, not implementations.
 
-### 7.6.1 Intent File as Context
+### 7.6.1 Module Size Guidelines
 
-Intent files are designed to fit within LLM context windows. The compiler enforces advisory limits:
+The compiler enforces advisory size limits to keep modules reviewable:
 
-| File type      | Warning threshold | Hard limit | Rationale                        |
-|----------------|-------------------|------------|----------------------------------|
-| `.mn.intent`   | 300 lines         | None       | Should fit in one context window |
-| `.mn`          | 1000 lines        | None       | Larger but still bounded         |
+| Threshold         | Default  | Description                          |
+|-------------------|----------|--------------------------------------|
+| Warning           | 500 lines | Module is getting large              |
+| Suggested split   | 800 lines | Compiler suggests splitting          |
 
-**Target range for intent files: 100-200 lines.** If an intent file grows beyond 300 lines, the compiler emits a warning suggesting the module be split. These limits are advisory (warnings, not errors) unless a `monel.policy` file upgrades them to errors.
+**Target range: 200-400 lines.** If a module grows beyond 500 lines, the compiler emits a warning suggesting it be split. These limits are advisory (warnings, not errors) unless a `monel.policy` file upgrades them to errors.
+
+A `monel.team` file can override these thresholds via `max_module_lines` in the `[style]` section.
+
+---
 
 ## 7.7 Project Manifest: `monel.project`
 
@@ -296,8 +307,6 @@ Version strings follow semver. The version requirement syntax supports:
 
 The `[tools]` section declares project-level CLI tool dependencies -- executable binaries that the project's workflow requires (code generators, database migrators, linters, etc.). The `[tools.dev]` subsection declares tools needed only during development (profilers, benchmarking harnesses, etc.).
 
-**Design rationale.** Cargo has no way to declare dev tool dependencies. Go resorts to a `tools.go` blank-import hack. npm and uv handle this well. Monel makes tool dependencies first-class: they are declared in the manifest, pinned in the lockfile, and installed to a project-local directory.
-
 #### Manifest Syntax
 
 ```toml
@@ -340,7 +349,7 @@ artifact_field     = "artifact" , "=" , quoted_string ;
 
 #### Installation and Scoping
 
-Tools are project-scoped. `monel sync` installs them into `.monel/tools/` relative to the project root -- never into a global location. This guarantees that different projects can pin different versions of the same tool without conflict.
+Tools are project-scoped. `monel sync` installs them into `.monel/tools/` relative to the project root -- never into a global location. Different projects can pin different versions of the same tool without conflict.
 
 ```
 .monel/
@@ -357,7 +366,7 @@ The `.monel/tools/` directory SHOULD be added to `.gitignore`. It is fully repro
 When installing a tool, `monel sync` uses the following strategy:
 
 1. **Check cache.** If the exact version is already present in the global binary cache (`~/.monel/cache/tools/`), hardlink or copy it.
-2. **Download prebuilt binary.** Query the registry or `source` for a prebuilt binary matching the host platform and architecture. This is the fast path.
+2. **Download prebuilt binary.** Query the registry or `source` for a prebuilt binary matching the host platform and architecture.
 3. **Compile from source.** If no prebuilt binary is available, fetch the source and compile it. Feature flags from the manifest are passed to the build.
 
 Prebuilt binaries are verified against SHA-256 checksums recorded in the registry.
@@ -402,7 +411,7 @@ If the tool is not installed, `monel run` prints an error directing the user to 
 - Dev dependencies (`[dev-dependencies]`).
 - Tool binaries (`[tools]` and `[tools.dev]`).
 
-A single lockfile ensures fully reproducible builds and environments. See Section 7.11.1 for the lockfile lifecycle.
+A single lockfile ensures fully reproducible builds and environments. See Section 7.10.1 for the lockfile lifecycle.
 
 ### 7.7.5 `[targets]` Section
 
@@ -429,7 +438,7 @@ opt-level = "size"       # optimize for size
 
 ### 7.7.6 `[llm]` Section
 
-The LLM section is optional. When absent, the compiler operates in offline mode -- all compilation stages except Stage 4 (semantic parity checking) function normally.
+The LLM section configures AI-assisted tooling (`monel test --gen-llm-tests`, `monel suggest`, etc.). The compiler itself never uses an LLM — all verification is deterministic.
 
 ```toml
 [llm]
@@ -441,13 +450,15 @@ timeout_seconds = 30            # optional: request timeout
 max_retries = 3                 # optional: retry count
 ```
 
-The compiler never stores API keys directly. The `api_key_env` field names an environment variable that the compiler reads at invocation time.
+The toolchain never stores API keys directly. The `api_key_env` field names an environment variable read at invocation time.
 
 Supported providers:
 - `anthropic` -- Anthropic API
 - `openai` -- OpenAI-compatible API
 - `local` -- Local model (e.g., ollama)
 - `custom` -- Custom endpoint (requires `base_url`)
+
+---
 
 ## 7.8 Team Configuration: `monel.team`
 
@@ -478,8 +489,7 @@ avoid = [
 [style]
 naming = "snake_case"
 type_naming = "PascalCase"
-max_intent_lines = 200
-max_impl_lines = 800
+max_module_lines = 500
 max_function_lines = 50
 
 [effects.custom]
@@ -504,11 +514,13 @@ style_references = [
 
 **`[patterns]`** -- Lists of patterns to prefer or avoid. The generator uses these as soft constraints when producing implementations.
 
-**`[style]`** -- Naming conventions and size limits. The `max_intent_lines` and `max_impl_lines` values override the compiler's default warning thresholds.
+**`[style]`** -- Naming conventions and size limits. The `max_module_lines` value overrides the compiler's default warning threshold for module size.
 
 **`[effects.custom]`** -- Organization-specific effects beyond the built-in set. Each custom effect has a description and severity level (`low`, `medium`, `high`, `critical`). Custom effects are tracked by the compiler just like built-in effects.
 
 **`[generation]`** -- Configuration for `monel generate`. `system_prompt_extras` is appended to the system prompt when generating implementations. `style_references` lists files whose style should be used as examples.
+
+---
 
 ## 7.9 Policy Configuration: `monel.policy`
 
@@ -525,24 +537,12 @@ forbidden_combinations = [
 require_explicit_effects = true  # every function must declare effects (no inference)
 max_effect_depth = 3             # max transitive effect chain depth
 
-[parity]
-require_parity = true            # all modules must pass parity checking
-strict_required_for = [
-  "auth/*",                      # authentication modules must use @strict intent
-  "billing/*",                   # billing modules must use @strict intent
-  "crypto/*",                    # crypto modules must use @strict intent
+[contracts]
+require_contracts_for = [
+  "auth/*",                      # authentication modules must have contracts
+  "billing/*",                   # billing modules must have contracts
+  "crypto/*",                    # crypto modules must have contracts
 ]
-
-[intent]
-require_intent = true            # every .mn file must have a .mn.intent file
-strict_modules = [
-  "auth/*",
-  "billing/*",
-]
-
-[generation]
-require_review = true            # generated code must be reviewed before commit
-auto_approve_threshold = 0.95    # auto-approve if parity score >= threshold
 
 [security]
 taint_tracking = true            # enable taint analysis for untrusted inputs
@@ -570,26 +570,19 @@ forbid_logging = [
 
 **`[effects]`** -- Rules about effect usage.
 - `forbidden_combinations`: pairs of effects that must never appear in the same function. If a function transitively produces both effects, the compiler emits an error.
-- `require_explicit_effects`: when `true`, every function must declare its effects in the intent file. The compiler will not infer effects.
+- `require_explicit_effects`: when `true`, every function must declare its effects. The compiler will not infer effects.
 - `max_effect_depth`: limits how deep transitive effect chains can go. A function calling a function calling a function with `Db.write` has depth 3.
 
-**`[parity]`** -- Rules about intent-implementation parity.
-- `require_parity`: when `true`, the build fails if any module has unresolved parity violations.
-- `strict_required_for`: glob patterns matching module paths that must use `@strict` intent (formal contracts, pre/post conditions, invariants).
-
-**`[intent]`** -- Rules about intent files.
-- `require_intent`: when `true`, every `.mn` file must have a corresponding `.mn.intent` file. Bare implementation files are an error.
-- `strict_modules`: glob patterns matching modules that must use `@strict` intent.
-
-**`[generation]`** -- Rules about AI-generated code.
-- `require_review`: when `true`, `monel generate` marks generated files as "pending review" and they do not pass compilation until reviewed.
-- `auto_approve_threshold`: parity score (0.0-1.0) above which generated code is auto-approved without human review.
+**`[contracts]`** -- Rules about contract annotations.
+- `require_contracts_for`: glob patterns matching modules where all public functions must have contracts (`requires:`, `ensures:`, `effects:`).
 
 **`[security]`** -- Security-related rules.
 - `taint_tracking`: enables compile-time taint analysis. Values from untrusted sources (HTTP input, file reads, environment variables) are marked as tainted and must be sanitized before use in sensitive operations.
 - `require_auth_effect`: glob patterns matching modules that must declare the `Auth` effect.
 - `pii_fields`: field names that the compiler flags as personally identifiable information. These fields trigger additional checks (e.g., must not be logged, must be encrypted at rest).
 - `forbid_logging`: field names that must never appear in log statements. The compiler scans for these in string interpolations and log function calls.
+
+---
 
 ## 7.10 Query Index: `.monel/index.json`
 
@@ -599,7 +592,7 @@ The `.monel/index.json` file is a pre-built search index generated by `monelc` d
 
 The index contains:
 - All exported symbols with their module paths
-- All intent descriptions (`does:`, `ensures:`, etc.)
+- All contract clauses (`requires:`, `ensures:`, `effects:`, etc.)
 - All type signatures
 - All effect declarations
 - All error variants
@@ -614,7 +607,7 @@ The index contains:
   "generated_at": "2026-03-12T10:00:00Z",
   "modules": {
     "terminal": {
-      "path": "src/terminal/mod.mn.intent",
+      "path": "src/terminal/mod.mn",
       "exports": ["Terminal", "Config", "spawn_shell", "resize"],
       "types": {
         "Terminal": {
@@ -650,9 +643,11 @@ The index contains:
 
 1. The index is generated as a side effect of compilation.
 2. `monel query` reads the index and does not require recompilation.
-3. The index is invalidated when any `.mn.intent` file changes.
+3. The index is invalidated when any `.mn` file's exported contracts change.
 4. The `.monel/` directory SHOULD be added to `.gitignore`.
 5. CI/CD pipelines can generate the index via `monel build` and cache it.
+
+---
 
 ## 7.11 Dependency Resolution and Versioning
 
@@ -667,9 +662,9 @@ Monel uses a SAT-solver-based dependency resolver (similar to Cargo/pub). The re
 
 The `monel.lock` file covers library dependencies, dev dependencies, and tool binaries (see Section 7.7.4). It MUST be committed to version control for applications. Libraries SHOULD NOT commit `monel.lock`.
 
-### 7.11.2 Automatic Semver from Intent Diffs
+### 7.11.2 Automatic Semver from Export Diffs
 
-When publishing a package, the compiler can automatically determine the correct semver bump by diffing the current intent files against the previously published version:
+When publishing a package, the compiler can automatically determine the correct semver bump by diffing the current exported signatures and contracts against the previously published version:
 
 | Change type                          | Semver bump |
 |--------------------------------------|-------------|
@@ -680,7 +675,7 @@ When publishing a package, the compiler can automatically determine the correct 
 | Added field to struct (with default) | Minor       |
 | Added error variant                  | Minor       |
 | Removed error variant                | Major       |
-| Changed `does:` description only     | Patch       |
+| Changed `doc:` description only      | Patch       |
 | Changed implementation only          | Patch       |
 | New module added                     | Minor       |
 | Module removed                       | Major       |
@@ -689,21 +684,23 @@ When publishing a package, the compiler can automatically determine the correct 
 
 This analysis is performed by `monel publish` and can be previewed with `monel semver-check`.
 
-### 7.11.3 Intent-Only Dependencies
+### 7.11.3 Export-Only Dependencies
 
-When a dependency is fetched, only its intent files and compiled artifacts are downloaded. Source implementation files are never distributed unless explicitly opted in. This means:
+When a dependency is fetched, only its exported signatures, contracts, and compiled artifacts are downloaded. Source implementation files are never distributed unless explicitly opted in. This means:
 
-1. Dependency consumers see only the public API (intent layer).
-2. Proprietary implementations can be distributed as compiled artifacts with public intents.
+1. Dependency consumers see only the public API (exported contracts).
+2. Proprietary implementations can be distributed as compiled artifacts with public exports.
 3. The total download size is minimized.
-4. LLMs generating code against a dependency need only the intent files.
+4. LLMs generating code against a dependency need only the exported contracts.
 
 ### 7.11.4 Dependency Auditing
 
 `monel audit` scans the dependency tree for:
 - Known vulnerabilities (from a registry advisory database)
-- Effect escalation (a dependency introduces effects not declared in its intent)
+- Effect escalation (a dependency introduces effects not declared in its contracts)
 - Policy violations (dependencies that violate the project's `monel.policy`)
+
+---
 
 ## 7.12 Module Path Resolution
 
@@ -711,8 +708,8 @@ When a dependency is fetched, only its intent files and compiled artifacts are d
 
 Given a `use` statement like `use terminal/pty {Pty}`, the compiler resolves the module path as follows:
 
-1. **Local resolution:** Check `src/terminal/pty.mn.intent` relative to the project root.
-2. **Parent module re-exports:** Check if `terminal/mod.mn.intent` re-exports `Pty`.
+1. **Local resolution:** Check `src/terminal/pty.mn` relative to the project root.
+2. **Parent module re-exports:** Check if `terminal/mod.mn` re-exports `Pty`.
 3. **Dependency resolution:** Check if `terminal` is a dependency name in `monel.project`.
 4. **Standard library:** Check if the path begins with `std/`.
 5. **Error:** If none match, emit a "module not found" error with suggestions.
@@ -728,40 +725,46 @@ Circular dependencies between modules are forbidden. The compiler builds a modul
 
 ```
 error: circular dependency detected
-  --> src/a/mod.mn.intent
+  --> src/a/mod.mn
   |
   | a -> b -> c -> a
   |
   = help: extract shared types into a new module that both can depend on
 ```
 
+---
+
 ## 7.13 Module Initialization
 
 Modules do not have implicit initialization code. There are no `init()` functions that run at import time. All initialization is explicit:
 
 ```
-# In intent
-intent fn create_terminal(config: Config) -> Result<Terminal, InitError>
-  does: "creates and initializes a terminal instance"
+fn create_terminal(config: Config) -> Result<Terminal, InitError>
+  doc: "creates and initializes a terminal instance"
   effects: [Pty.open, Process.spawn]
+  ...
 ```
 
-If a module requires one-time setup, it must expose a factory function. The caller decides when initialization happens.
+If a module requires one-time setup, it exposes a factory function. The caller decides when initialization happens.
+
+---
 
 ## 7.14 Conditional Compilation
 
-Monel supports target-conditional code through the `when` attribute in intent:
+Monel supports target-conditional code through the `when` attribute:
 
 ```
-intent fn get_terminal_size() -> (UInt32, UInt32)
-  does: "returns the current terminal dimensions"
+fn get_terminal_size() -> (UInt32, UInt32)
+  doc: "returns the current terminal dimensions"
   when: target.os != "wasm"
   effects: [Pty.query]
+  ...
 
-intent fn get_terminal_size() -> (UInt32, UInt32)
-  does: "returns fixed dimensions for web terminals"
+fn get_terminal_size() -> (UInt32, UInt32)
+  doc: "returns fixed dimensions for web terminals"
   when: target.os == "wasm"
   effects: []
+  ...
 ```
 
 Available conditions:
@@ -769,15 +772,17 @@ Available conditions:
 - `target.arch` -- `"x86_64"`, `"aarch64"`, `"wasm32"`
 - `target.feature` -- feature flags from `monel.project`
 
-Conditional compilation is declared in intent so that consumers of the module can see platform-specific behavior without reading the implementation.
+Conditional compilation is declared alongside contracts so that consumers of the module can see platform-specific behavior without reading the implementation.
+
+---
 
 ## 7.15 Module Compilation Order
 
 The compiler determines compilation order from the dependency graph:
 
-1. Parse all `.mn.intent` files to build the module graph.
+1. Parse all `.mn` files to extract module declarations, exports, and imports.
 2. Topologically sort the modules.
 3. Compile modules in dependency order (leaves first).
-4. Parity checking runs per-module after both intent and implementation are compiled.
+4. Parity checking runs per-module after contracts and implementation are both compiled.
 
 Parallel compilation is supported for modules that are not interdependent. The compiler automatically parallelizes across available CPU cores.

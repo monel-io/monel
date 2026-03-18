@@ -1,8 +1,8 @@
 # 10. Systems Programming
 
-This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust — systems software, terminal emulators, editors, and performance-critical applications — while preserving the intent/implementation/parity architecture.
+This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust — systems software, terminal emulators, editors, and performance-critical applications — while preserving the contract/implementation architecture.
 
-The `unsafe` effect makes low-level operations visible in the intent layer. The parity compiler verifies that safety invariants are documented. The hot-swap runtime requires explicit confirmation before reloading unsafe functions.
+The `unsafe` effect makes low-level operations visible in the function signature. The compiler verifies that safety invariants are documented. The hot-swap runtime requires explicit confirmation before reloading unsafe functions.
 
 ---
 
@@ -12,19 +12,19 @@ The `unsafe` effect makes low-level operations visible in the intent layer. The 
 
 ```mermaid
 graph LR
-    subgraph "Intent Layer"
-        I["intent fn init_buffer(...)<br/>effects: [unsafe, Fs.write]<br/><i>safety: 'alloc is bounded by size'</i>"]
+    subgraph "Function Contract"
+        I["fn init_buffer(...)<br/>effects: [unsafe, Fs.write]<br/><i>safety: 'alloc is bounded by size'</i>"]
     end
 
-    subgraph "Implementation Layer"
+    subgraph "Implementation"
         U["unsafe block<br/><i>discharges effect locally</i>"]
         S["safe code<br/><i>no unsafe propagation</i>"]
         U --> S
     end
 
-    subgraph "Parity Verification"
-        P1["Stage 2: effect declared ✓"]
-        P2["Stage 3: safety doc present ✓"]
+    subgraph "Compiler Verification"
+        P1["effect declared ✓"]
+        P2["safety doc present ✓"]
         P3["Hot-swap: confirm before reload ⚠️"]
     end
 
@@ -61,7 +61,7 @@ The `unsafe` block:
 - Permits all unsafe operations within its body.
 - **Discharges** the `unsafe` effect — the enclosing function does **not** need `with unsafe` in its signature.
 - Callers of the enclosing function do **not** need to declare or handle `unsafe`.
-- Must be as small as possible — the parity compiler warns on `unsafe` blocks that contain safe operations.
+- Must be as small as possible — the compiler warns on `unsafe` blocks that contain safe operations.
 
 This distinction is critical: a function can **use** unsafe internally while presenting a **safe interface** to callers. In the example above, `init_buffer` performs raw pointer allocation inside an `unsafe` block, but its signature is safe — callers treat it as an ordinary function. Compare with `alloc_buffer` in 10.1.1, which declares `with unsafe` and forces all callers to acknowledge the unsafe effect.
 
@@ -69,26 +69,28 @@ The rule:
 - `unsafe` block inside a function → effect discharged locally, function signature is safe.
 - `with unsafe` on a function → effect propagates, all callers must handle it.
 
-### 10.1.3 Unsafe in Intent
+### 10.1.3 Unsafe in Function Contracts
 
-The intent layer documents unsafe operations and the invariants they depend on:
+The function contract documents unsafe operations and the invariants they depend on:
 
 ```
-intent fn init_pty(config: PtyConfig) -> Result<Pty, PtyError>
-  does: "initializes a PTY with the given configuration"
+fn init_pty(config: PtyConfig) -> Result<Pty, PtyError>
+  doc: "initializes a PTY with the given configuration"
   effects: [unsafe, Fs.read, Fs.write]
   panics: never
   safety:
     requires: "config.rows > 0 and config.cols > 0"
     invariant: "returned Pty owns the file descriptor and will close it on drop"
+
+  // implementation...
 ```
 
-The `safety` block is required for any intent that declares `unsafe`. It documents:
+The `safety` block is required for any function that declares `unsafe`. It documents:
 - `requires` — preconditions the caller must satisfy.
 - `invariant` — postconditions the function establishes.
 - `assumes` — assumptions about the environment (e.g., "platform supports POSIX PTY").
 
-The parity compiler verifies that every `unsafe` block in the implementation corresponds to a documented safety invariant in the intent.
+The compiler verifies that every `unsafe` block in the implementation corresponds to a documented safety invariant.
 
 ### 10.1.4 Unsafe and Hot-Swap
 
@@ -100,7 +102,7 @@ Functions with the `unsafe` effect require explicit confirmation for hot-swap du
   confirm reload? [y/n]
 ```
 
-If the safety invariants in the intent have changed, the runtime refuses hot-swap entirely and requires a full restart.
+If the safety invariants have changed, the runtime refuses hot-swap entirely and requires a full restart.
 
 ---
 
@@ -414,13 +416,12 @@ extern "C"
   fn tcgetattr(fd: Int, termios: MutPtr<Termios>) -> Int
   fn tcsetattr(fd: Int, action: Int, termios: Ptr<Termios>) -> Int
 
-// Safe wrapper
-intent fn get_terminal_attrs(fd: Fd) -> Result<Termios, IoError>
-  does: "reads terminal attributes for the given file descriptor"
+// Safe wrapper with contract and implementation together
+fn get_terminal_attrs(fd: Fd) -> Result<Termios, IoError>
+  doc: "reads terminal attributes for the given file descriptor"
   effects: [Fs.read]
   panics: never
 
-fn get_terminal_attrs(fd: Fd) -> Result<Termios, IoError>
   let mut attrs = Termios.zeroed()
   let result = unsafe
     tcgetattr(fd.raw(), &mut attrs as MutPtr<Termios>)
@@ -451,25 +452,29 @@ struct Fd
 ```
 
 ```
-intent fn Fd.open(path: String, flags: OpenFlags) -> Result<Fd, IoError>
-  does: "opens a file descriptor with the given flags"
+fn Fd.open(path: String, flags: OpenFlags) -> Result<Fd, IoError>
+  doc: "opens a file descriptor with the given flags"
   effects: [unsafe, Fs.read]
   panics: never
+  // ...
 
-intent fn Fd.read(self: Fd, buf: mut Array<Byte>) -> Result<Int, IoError>
-  does: "reads bytes into the buffer, returns number of bytes read"
+fn Fd.read(self: Fd, buf: mut Array<Byte>) -> Result<Int, IoError>
+  doc: "reads bytes into the buffer, returns number of bytes read"
   effects: [unsafe, Fs.read]
   panics: never
+  // ...
 
-intent fn Fd.write(self: Fd, buf: Array<Byte>) -> Result<Int, IoError>
-  does: "writes bytes from the buffer, returns number of bytes written"
+fn Fd.write(self: Fd, buf: Array<Byte>) -> Result<Int, IoError>
+  doc: "writes bytes from the buffer, returns number of bytes written"
   effects: [unsafe, Fs.write]
   panics: never
+  // ...
 
-intent fn Fd.ioctl(self: Fd, request: ULong, arg: MutPtr<Byte>) -> Result<Int, IoError>
-  does: "performs an ioctl operation on the file descriptor"
+fn Fd.ioctl(self: Fd, request: ULong, arg: MutPtr<Byte>) -> Result<Int, IoError>
+  doc: "performs an ioctl operation on the file descriptor"
   effects: [unsafe]
   panics: never
+  // ...
 
 impl Drop for Fd
   fn drop(self: mut Self)
@@ -489,23 +494,26 @@ struct Pty
 ```
 
 ```
-intent fn Pty.open(config: PtyConfig) -> Result<Pty, PtyError>
-  does: "opens a new PTY pair with the given size and terminal attributes"
+fn Pty.open(config: PtyConfig) -> Result<Pty, PtyError>
+  doc: "opens a new PTY pair with the given size and terminal attributes"
   effects: [unsafe, Fs.read, Fs.write]
   panics: never
   safety:
     requires: "config.rows > 0 and config.cols > 0"
     invariant: "returned Pty owns both master and slave fds"
+  // ...
 
-intent fn Pty.resize(self: Pty, rows: UInt16, cols: UInt16) -> Result<Unit, PtyError>
-  does: "resizes the PTY to the given dimensions"
+fn Pty.resize(self: Pty, rows: UInt16, cols: UInt16) -> Result<Unit, PtyError>
+  doc: "resizes the PTY to the given dimensions"
   effects: [unsafe]
   panics: never
+  // ...
 
-intent fn Pty.spawn(self: Pty, cmd: String, args: Array<String>) -> Result<Process, PtyError>
-  does: "spawns a child process connected to the PTY slave"
+fn Pty.spawn(self: Pty, cmd: String, args: Array<String>) -> Result<Process, PtyError>
+  doc: "spawns a child process connected to the PTY slave"
   effects: [unsafe, Process.spawn]
   panics: never
+  // ...
 ```
 
 ### 10.5.3 `Mmap` — Memory-Mapped I/O
@@ -525,28 +533,32 @@ struct MmapMut
 ```
 
 ```
-intent fn Mmap.open(fd: Fd, offset: Int, len: Int) -> Result<Mmap, IoError>
-  does: "memory-maps a region of the file for reading"
+fn Mmap.open(fd: Fd, offset: Int, len: Int) -> Result<Mmap, IoError>
+  doc: "memory-maps a region of the file for reading"
   effects: [unsafe, Fs.read]
   panics: never
   safety:
     requires: "offset >= 0 and len > 0"
     invariant: "returned Mmap is valid for the lifetime of the Fd"
+  // ...
 
-intent fn MmapMut.open(fd: Fd, offset: Int, len: Int) -> Result<MmapMut, IoError>
-  does: "memory-maps a region of the file for reading and writing"
+fn MmapMut.open(fd: Fd, offset: Int, len: Int) -> Result<MmapMut, IoError>
+  doc: "memory-maps a region of the file for reading and writing"
   effects: [unsafe, Fs.read, Fs.write]
   panics: never
+  // ...
 
-intent fn Mmap.as_slice(self: Mmap) -> Array<Byte>
-  does: "returns the mapped region as a byte slice"
+fn Mmap.as_slice(self: Mmap) -> Array<Byte>
+  doc: "returns the mapped region as a byte slice"
   effects: []
   panics: never
+  // ...
 
-intent fn MmapMut.flush(self: MmapMut) -> Result<Unit, IoError>
-  does: "flushes changes to the underlying file"
+fn MmapMut.flush(self: MmapMut) -> Result<Unit, IoError>
+  doc: "flushes changes to the underlying file"
   effects: [unsafe, Fs.write]
   panics: never
+  // ...
 ```
 
 `Mmap` and `MmapMut` implement `Drop` to call `munmap`.
@@ -585,10 +597,11 @@ enum SignalKind
 Signal handlers are registered through the `std/signal` module:
 
 ```
-intent fn Signal.handle(sig: SignalKind, handler: fn() -> Unit) -> Result<SignalGuard, SignalError>
-  does: "registers a signal handler, returns a guard that unregisters on drop"
+fn Signal.handle(sig: SignalKind, handler: fn() -> Unit) -> Result<SignalGuard, SignalError>
+  doc: "registers a signal handler, returns a guard that unregisters on drop"
   effects: [unsafe, Signal]
   panics: never
+  // ...
 ```
 
 Signal handlers run in a restricted context — they may only set atomic flags and write to pipes. The compiler enforces this by requiring signal handler functions to have the signature `fn() -> Unit` with no captured mutable state except atomics.
@@ -598,10 +611,11 @@ Signal handlers run in a restricted context — they may only set atomic flags a
 Signals integrate with the async event loop:
 
 ```
-intent fn Signal.stream(sig: SignalKind) -> Result<SignalStream, SignalError>
-  does: "returns an async stream that yields each time the signal is received"
+fn Signal.stream(sig: SignalKind) -> Result<SignalStream, SignalError>
+  doc: "returns an async stream that yields each time the signal is received"
   effects: [unsafe, Signal, Async]
   panics: never
+  // ...
 ```
 
 ```
@@ -733,8 +747,8 @@ Display Output
 ### 10.8.2 Render Primitives
 
 ```
-intent module std/render
-  does: "provides GPU-accelerated rendering for terminal and editor applications"
+module std/render
+  doc: "provides GPU-accelerated rendering for terminal and editor applications"
   effects: [unsafe, Gpu]
 ```
 
@@ -769,20 +783,23 @@ enum Color
 ### 10.8.3 Renderer Lifecycle
 
 ```
-intent fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
-  does: "initializes the GPU renderer with the given configuration"
+fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
+  doc: "initializes the GPU renderer with the given configuration"
   effects: [unsafe, Gpu]
   panics: never
+  // ...
 
-intent fn Renderer.draw(self: &mut Renderer, scene: &Scene) -> Result<Unit, RenderError>
-  does: "renders the scene to the display, computing minimal diff from previous frame"
+fn Renderer.draw(self: &mut Renderer, scene: &Scene) -> Result<Unit, RenderError>
+  doc: "renders the scene to the display, computing minimal diff from previous frame"
   effects: [unsafe, Gpu]
   panics: never
+  // ...
 
-intent fn Renderer.resize(self: &mut Renderer, width: UInt32, height: UInt32) -> Result<Unit, RenderError>
-  does: "handles display resize"
+fn Renderer.resize(self: &mut Renderer, width: UInt32, height: UInt32) -> Result<Unit, RenderError>
+  doc: "handles display resize"
   effects: [unsafe, Gpu]
   panics: never
+  // ...
 ```
 
 ### 10.8.4 GPU Effect
@@ -795,17 +812,18 @@ effect Gpu
   fn submit_commands(cmds: Array<GpuCommand>)
 ```
 
-This ensures GPU operations are visible in the effect system and subject to parity verification.
+This ensures GPU operations are visible in the effect system and subject to compiler verification.
 
 ### 10.8.5 CPU Fallback
 
 When GPU acceleration is unavailable, the renderer falls back to CPU rendering via ANSI escape codes:
 
 ```
-intent fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
-  does: "initializes the renderer, selecting GPU or CPU backend based on availability"
+fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
+  doc: "initializes the renderer, selecting GPU or CPU backend based on availability"
   effects: [unsafe, Gpu | Fs.write]
   panics: never
+  // ...
 ```
 
 The `Gpu | Fs.write` effect annotation indicates the function uses either the GPU effect or filesystem write (for terminal escape codes), depending on the backend selected at runtime.
@@ -824,15 +842,17 @@ struct EventLoop
 ```
 
 ```
-intent fn EventLoop.new() -> Result<EventLoop, IoError>
-  does: "creates a new event loop backed by the platform's I/O multiplexer (epoll/kqueue)"
+fn EventLoop.new() -> Result<EventLoop, IoError>
+  doc: "creates a new event loop backed by the platform's I/O multiplexer (epoll/kqueue)"
   effects: [unsafe]
   panics: never
+  // ...
 
-intent fn EventLoop.run(self: &mut EventLoop, handler: fn(Event) -> LoopControl) -> Result<Unit, IoError>
-  does: "runs the event loop, dispatching events to the handler until it returns Break"
+fn EventLoop.run(self: &mut EventLoop, handler: fn(Event) -> LoopControl) -> Result<Unit, IoError>
+  doc: "runs the event loop, dispatching events to the handler until it returns Break"
   effects: [unsafe, Async]
   panics: never
+  // ...
 ```
 
 ### 10.9.2 Event Types
@@ -861,60 +881,43 @@ enum LoopControl
 ### 10.9.3 Event Source Registration
 
 ```
-intent fn EventLoop.register_fd(self: mut EventLoop, fd: Fd, interest: IoReadiness) -> Result<Unit, IoError>
-  does: "registers a file descriptor for I/O readiness notifications"
+fn EventLoop.register_fd(self: mut EventLoop, fd: Fd, interest: IoReadiness) -> Result<Unit, IoError>
+  doc: "registers a file descriptor for I/O readiness notifications"
   effects: [unsafe]
   panics: never
+  // ...
 
-intent fn EventLoop.register_timer(self: &mut EventLoop, duration: Duration, repeat: Bool) -> TimerId
-  does: "registers a timer that fires after the given duration"
+fn EventLoop.register_timer(self: &mut EventLoop, duration: Duration, repeat: Bool) -> TimerId
+  doc: "registers a timer that fires after the given duration"
   effects: []
   panics: never
+  // ...
 
-intent fn EventLoop.register_signal(self: &mut EventLoop, sig: SignalKind) -> Result<Unit, IoError>
-  does: "registers a signal for event loop delivery"
+fn EventLoop.register_signal(self: &mut EventLoop, sig: SignalKind) -> Result<Unit, IoError>
+  doc: "registers a signal for event loop delivery"
   effects: [unsafe, Signal]
   panics: never
+  // ...
 ```
 
 ---
 
 ## 10.10 Complete Example: Terminal Application
 
-This example demonstrates how the systems programming features compose to build a terminal application:
+This example demonstrates how the systems programming features compose to build a terminal application. Contracts and implementation are in the same `.mn` file:
 
 ```
-// Intent layer (terminal.mn.intent)
+// terminal.mn
 
-intent module terminal
-  does: "minimal terminal emulator using PTY and GPU rendering"
+module terminal
+  doc: "minimal terminal emulator using PTY and GPU rendering"
   effects: [unsafe, Fs.read, Fs.write, Gpu, Signal, Async]
-
-intent fn run(config: TermConfig) -> Result<Unit, TermError>
-  does: "runs the terminal emulator with the given configuration"
-  effects: [unsafe, Fs.read, Fs.write, Gpu, Signal, Async]
-  panics: never
-
-intent fn handle_input(app: &mut App, event: InputEvent) -> LoopControl
-  does: "processes keyboard and mouse input, sends to PTY"
-  effects: [Fs.write]
-  panics: never
-
-intent fn render_frame(app: &App, renderer: &mut Renderer) -> Result<Unit, RenderError>
-  does: "renders the current terminal state to the display"
-  effects: [unsafe, Gpu]
-  panics: never
-```
-
-```
-// Implementation layer (terminal.mn)
-
-use std/terminal.{Pty, PtyConfig}
-use std/render.{Renderer, RenderConfig, Surface, Cell}
-use std/async.{EventLoop, Event, LoopControl}
-use std/signal.{Signal, SignalKind}
 
 fn run(config: TermConfig) -> Result<Unit, TermError>
+  doc: "runs the terminal emulator with the given configuration"
+  effects: [unsafe, Fs.read, Fs.write, Gpu, Signal, Async]
+  panics: never
+
   let pty = Pty.open(PtyConfig {
     rows: config.rows,
     cols: config.cols,
@@ -956,17 +959,29 @@ fn run(config: TermConfig) -> Result<Unit, TermError>
       _ => LoopControl.Continue
   )?
   Ok(())
+
+fn handle_input(app: &mut App, event: InputEvent) -> LoopControl
+  doc: "processes keyboard and mouse input, sends to PTY"
+  effects: [Fs.write]
+  panics: never
+  // ...
+
+fn render_frame(app: &App, renderer: &mut Renderer) -> Result<Unit, RenderError>
+  doc: "renders the current terminal state to the display"
+  effects: [unsafe, Gpu]
+  panics: never
+  // ...
 ```
 
 ---
 
 ## 10.11 Safety Invariant Documentation
 
-All unsafe code in Monel must document its safety invariants. The parity compiler enforces this requirement.
+All unsafe code in Monel must document its safety invariants. The compiler enforces this requirement.
 
 ### 10.11.1 Required Documentation
 
-Every `unsafe` block must have a corresponding safety comment or intent annotation:
+Every `unsafe` block must have a corresponding safety comment or contract annotation:
 
 ```
 // In implementation: safety comment
@@ -977,22 +992,24 @@ unsafe
 ```
 
 ```
-// In intent: safety block
-intent fn write_cell(grid: &mut Grid, row: Int, col: Int, cell: Cell)
-  does: "writes a cell at the given position in the grid"
+// In function contract: safety block
+fn write_cell(grid: &mut Grid, row: Int, col: Int, cell: Cell)
+  doc: "writes a cell at the given position in the grid"
   effects: [unsafe]
   panics: "if row or col is out of bounds"
   safety:
     requires: "row < grid.rows and col < grid.cols"
     invariant: "grid's internal buffer remains valid"
+
+  // implementation...
 ```
 
-### 10.11.2 Parity Verification for Unsafe Code
+### 10.11.2 Compiler Verification for Unsafe Code
 
-The parity compiler performs additional checks for unsafe code:
+The compiler performs additional checks for unsafe code:
 
-1. **Coverage**: every `unsafe` block has a safety comment or corresponding intent safety block.
-2. **Consistency**: safety invariants in implementation comments match the intent's `safety` block.
+1. **Coverage**: every `unsafe` block has a safety comment or corresponding contract safety block.
+2. **Consistency**: safety invariants in implementation comments match the contract's `safety` block.
 3. **Containment**: `unsafe` blocks are as small as possible (warns on unnecessary operations inside unsafe).
 4. **Audit trail**: `monel audit unsafe` lists all unsafe blocks with their safety justifications.
 
@@ -1008,5 +1025,5 @@ monel audit unsafe --format json      # machine-readable output
 Output includes:
 - File and line number of each `unsafe` block.
 - The operations performed (pointer read/write, FFI call, etc.).
-- The safety justification (from comment or intent).
-- Whether the intent layer covers this unsafe usage.
+- The safety justification (from comment or contract).
+- Whether the contract covers this unsafe usage.
