@@ -145,21 +145,21 @@ struct IoError
   message: String
   os_error: Option<Int>
 
-enum IoErrorKind
-  NotFound
-  PermissionDenied
-  ConnectionRefused
-  ConnectionReset
-  BrokenPipe
-  AlreadyExists
-  WouldBlock
-  InvalidInput
-  InvalidData
-  TimedOut
-  UnexpectedEof
-  Interrupted
-  OutOfMemory
-  Other
+type IoErrorKind
+  | NotFound
+  | PermissionDenied
+  | ConnectionRefused
+  | ConnectionReset
+  | BrokenPipe
+  | AlreadyExists
+  | WouldBlock
+  | InvalidInput
+  | InvalidData
+  | TimedOut
+  | UnexpectedEof
+  | Interrupted
+  | OutOfMemory
+  | Other
 ```
 
 ---
@@ -288,11 +288,11 @@ struct DirEntry
   kind: FileKind
   metadata: Metadata
 
-enum FileKind
-  File
-  Directory
-  Symlink
-  Other
+type FileKind
+  | File
+  | Directory
+  | Symlink
+  | Other
 
 struct Metadata
   size: UInt64
@@ -368,9 +368,9 @@ fn UdpSocket.recv_from(self: Self, buf: mut Array<Byte>) -> Result<(Int, SocketA
 ### 12.4.3 Address Types
 
 ```
-enum SocketAddr
-  V4(Ipv4Addr, UInt16)
-  V6(Ipv6Addr, UInt16)
+type SocketAddr
+  | V4(Ipv4Addr, UInt16)
+  | V6(Ipv6Addr, UInt16)
 
 struct Ipv4Addr
   octets: Array<Byte, 4>
@@ -431,14 +431,14 @@ impl Response
   fn status(self: Self) -> StatusCode
   fn is_success(self: Self) -> Bool
 
-enum Method
-  Get
-  Post
-  Put
-  Delete
-  Patch
-  Head
-  Options
+type Method
+  | Get
+  | Post
+  | Put
+  | Delete
+  | Patch
+  | Head
+  | Options
 
 struct StatusCode(UInt16)
 
@@ -516,13 +516,13 @@ fn to_value<T: Serialize>(value: T) -> Result<JsonValue, JsonError>
 ### 12.6.2 Dynamic JSON Type
 
 ```
-enum JsonValue
-  Null
-  Bool(Bool)
-  Number(Float)
-  String(String)
-  Array(Vec<JsonValue>)
-  Object(Map<String, JsonValue>)
+type JsonValue
+  | Null
+  | Bool(Bool)
+  | Number(Float)
+  | String(String)
+  | Array(Vec<JsonValue>)
+  | Object(Map<String, JsonValue>)
 
 impl JsonValue
   fn is_null(self: Self) -> Bool
@@ -566,13 +566,13 @@ struct JsonError
   col: Int
   kind: JsonErrorKind
 
-enum JsonErrorKind
-  SyntaxError
-  TypeError
-  MissingField
-  UnknownField
-  Overflow
-  Eof
+type JsonErrorKind
+  | SyntaxError
+  | TypeError
+  | MissingField
+  | UnknownField
+  | Overflow
+  | Eof
 ```
 
 ---
@@ -950,9 +950,9 @@ impl Map<K: Hash + Eq, V>
   fn iter(self: Self) -> Iterator<Item = (K, V)>
   fn entry(self: mut Self, key: K) -> Entry<K, V>
 
-enum Entry<K, V>
-  Occupied(OccupiedEntry<K, V>)
-  Vacant(VacantEntry<K, V>)
+type Entry<K, V>
+  | Occupied(OccupiedEntry<K, V>)
+  | Vacant(VacantEntry<K, V>)
 
 impl Entry<K, V>
   fn or_insert(self, default: V) -> mut V
@@ -1040,12 +1040,12 @@ impl Atomic<T>
   fn fetch_and(self: Self, value: T, order: Ordering) -> T    // for integer T
   fn fetch_or(self: Self, value: T, order: Ordering) -> T     // for integer T
 
-enum Ordering
-  Relaxed
-  Acquire
-  Release
-  AcqRel
-  SeqCst
+type Ordering
+  | Relaxed
+  | Acquire
+  | Release
+  | AcqRel
+  | SeqCst
 ```
 
 ### 12.11.4 Channels
@@ -1178,21 +1178,21 @@ impl EventLoop
   fn register_signal(self: mut Self, sig: SignalKind) -> Result<Unit, IoError> with unsafe, Signal
   fn wake(self: Self)  // wake the event loop from another thread
 
-enum IoReadiness
-  Read
-  Write
-  ReadWrite
+type IoReadiness
+  | Read
+  | Write
+  | ReadWrite
 
-enum Event
-  IoReady(Fd, IoReadiness)
-  Timer(TimerId)
-  Signal(SignalKind)
-  Wake
-  Custom(Box<dyn Any>)
+type Event
+  | IoReady(Fd, IoReadiness)
+  | Timer(TimerId)
+  | Signal(SignalKind)
+  | Wake
+  | Custom(Box<dyn Any>)
 
-enum LoopControl
-  Continue
-  Break
+type LoopControl
+  | Continue
+  | Break
 ```
 
 ---
@@ -1227,11 +1227,11 @@ impl Hasher
   fn update(self: mut Self, data: Array<Byte>)
   fn finalize(self) -> Vec<Byte>
 
-enum HashAlgorithm
-  Sha256
-  Sha384
-  Sha512
-  Blake3
+type HashAlgorithm
+  | Sha256
+  | Sha384
+  | Sha512
+  | Blake3
 ```
 
 ### 12.13.2 Encryption
@@ -1375,10 +1375,10 @@ struct ExitStatus
   fn success(self: Self) -> Bool
   fn code(self: Self) -> Option<Int>
 
-enum Stdio
-  Inherit
-  Piped
-  Null
+type Stdio
+  | Inherit
+  | Piped
+  | Null
 ```
 
 ---
@@ -1456,37 +1456,37 @@ fn read_event(timeout: Option<Duration>) -> Result<Option<InputEvent>, IoError>
   effects: [Fs.read, unsafe]
   panics: never
 
-enum InputEvent
-  Key(KeyEvent)
-  Mouse(MouseEvent)
-  Paste(String)
-  Resize(UInt16, UInt16)
-  FocusGained
-  FocusLost
+type InputEvent
+  | Key(KeyEvent)
+  | Mouse(MouseEvent)
+  | Paste(String)
+  | Resize(UInt16, UInt16)
+  | FocusGained
+  | FocusLost
 
 struct KeyEvent
   code: KeyCode
   modifiers: Modifiers
 
-enum KeyCode
-  Char(Char)
-  Enter
-  Backspace
-  Delete
-  Tab
-  BackTab
-  Escape
-  Up
-  Down
-  Left
-  Right
-  Home
-  End
-  PageUp
-  PageDown
-  Insert
-  F(UInt8)
-  Null
+type KeyCode
+  | Char(Char)
+  | Enter
+  | Backspace
+  | Delete
+  | Tab
+  | BackTab
+  | Escape
+  | Up
+  | Down
+  | Left
+  | Right
+  | Home
+  | End
+  | PageUp
+  | PageDown
+  | Insert
+  | F(UInt8)
+  | Null
 
 struct Modifiers
   shift: Bool
@@ -1500,13 +1500,13 @@ struct MouseEvent
   row: UInt16
   modifiers: Modifiers
 
-enum MouseEventKind
-  Down(MouseButton)
-  Up(MouseButton)
-  Drag(MouseButton)
-  Moved
-  ScrollUp
-  ScrollDown
+type MouseEventKind
+  | Down(MouseButton)
+  | Up(MouseButton)
+  | Drag(MouseButton)
+  | Moved
+  | ScrollUp
+  | ScrollDown
 ```
 
 ### 12.16.4 PTY Integration
@@ -1549,9 +1549,9 @@ struct RenderConfig
   vsync: Bool
   backend: Option<Backend>    // None = auto-detect
 
-enum Backend
-  Gpu
-  Cpu
+type Backend
+  | Gpu
+  | Cpu
 
 struct RenderMetrics
   frame_time: Duration
@@ -1610,19 +1610,19 @@ struct CellAttrs
   inverse: Bool
   hidden: Bool
 
-enum UnderlineStyle
-  None
-  Single
-  Double
-  Curly
-  Dotted
-  Dashed
+type UnderlineStyle
+  | None
+  | Single
+  | Double
+  | Curly
+  | Dotted
+  | Dashed
 
-enum Color
-  Rgb(r: UInt8, g: UInt8, b: UInt8)
-  Rgba(r: UInt8, g: UInt8, b: UInt8, a: UInt8)
-  Indexed(index: UInt8)
-  Default
+type Color
+  | Rgb(r: UInt8, g: UInt8, b: UInt8)
+  | Rgba(r: UInt8, g: UInt8, b: UInt8, a: UInt8)
+  | Indexed(index: UInt8)
+  | Default
 
 struct CursorState
   row: Int
@@ -1630,11 +1630,11 @@ struct CursorState
   shape: CursorShape
   visible: Bool
 
-enum CursorShape
-  Block
-  Underline
-  Bar
-  HollowBlock
+type CursorShape
+  | Block
+  | Underline
+  | Bar
+  | HollowBlock
 ```
 
 ### 12.17.4 Font Management
@@ -1899,12 +1899,12 @@ fn with_env_var(name: String, value: String, f: fn() -> Unit) -> Unit
 Structured logging with level filtering.
 
 ```
-enum LogLevel
-  Trace
-  Debug
-  Info
-  Warn
-  Error
+type LogLevel
+  | Trace
+  | Debug
+  | Info
+  | Warn
+  | Error
 
 fn log(level: LogLevel, message: String, fields: Map<String, String>)
   doc: "emits a structured log entry"
@@ -1977,10 +1977,10 @@ struct Formatter
   fn sign_minus(self: Self) -> Bool
   fn alternate(self: Self) -> Bool     // # flag
 
-enum Alignment
-  Left
-  Right
-  Center
+type Alignment
+  | Left
+  | Right
+  | Center
 ```
 
 ### 12.21.3 Derive
@@ -2211,10 +2211,10 @@ trait Ord: Eq
   fn gt(self: Self, other: Self) -> Bool   // default via cmp
   fn ge(self: Self, other: Self) -> Bool   // default via cmp
 
-enum Ordering
-  Less
-  Equal
-  Greater
+type Ordering
+  | Less
+  | Equal
+  | Greater
 ```
 
 ### 12.25.2 Hashing

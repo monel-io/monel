@@ -232,8 +232,8 @@ fn producer_consumer() -> Result<(), Error>
     s.spawn(||
       loop
         match await rx.recv()
-          Some(item) -> process(item)
-          None -> break  # channel closed
+          | Some(item) => process(item)
+          | None => break  # channel closed
     )
 ```
 
@@ -583,8 +583,8 @@ scope |s|
 
   # await returns Err(Cancelled) after cancellation
   match await handle
-    Ok(result) -> use_result(result)
-    Err(TaskError.Cancelled) -> log("task was cancelled")
+    | Ok(result) => use_result(result)
+    | Err(TaskError.Cancelled) => log("task was cancelled")
 ```
 
 ### 9.10.3 Cancellation Safety
@@ -635,10 +635,10 @@ fn run_terminal() -> Result<(), Error>
 
   event_loop.run(|event|
     match event
-      Event.Key(key) -> try handle_key(key)
-      Event.Resize(w, h) -> try handle_resize(w, h)
-      Event.Signal(sig) -> try handle_signal(sig)
-      Event.Timer(id) -> try handle_timer(id)
+      | Event.Key(key) => try handle_key(key)
+      | Event.Resize(w, h) => try handle_resize(w, h)
+      | Event.Signal(sig) => try handle_signal(sig)
+      | Event.Timer(id) => try handle_timer(id)
   )
 ```
 
@@ -698,8 +698,8 @@ use std/async {timeout}
 
 fn fetch_with_timeout(url: Url) -> Result<Response, Error>
   match timeout(Duration.from_secs(5), fetch(url))
-    Ok(response) -> Ok(try response)
-    Err(Elapsed) -> Err(Error.Timeout("fetch timed out after 5s"))
+    | Ok(response) => Ok(try response)
+    | Err(Elapsed) => Err(Error.Timeout("fetch timed out after 5s"))
 ```
 
 `timeout(duration, future)` wraps a future with a timeout. If the future does not complete within the duration, it is cancelled and `Err(Elapsed)` is returned.
@@ -717,8 +717,8 @@ fn batch_process(items: Vec<Item>) -> Result<Vec<Output>, Error>
   let results = Vec.new()
   for item in items
     let result = match deadline(deadline_at, process(item))
-      Ok(r) -> try r
-      Err(Elapsed) -> return Err(Error.Deadline("batch did not complete in 30s"))
+      | Ok(r) => try r
+      | Err(Elapsed) => return Err(Error.Deadline("batch did not complete in 30s"))
     results.push(result)
   Ok(results)
 ```
@@ -764,8 +764,8 @@ fn fan_out_fan_in(requests: Vec<Request>) -> Result<Vec<Response>, Error>
     let results = Vec.new()
     loop
       match await result_rx.recv()
-        Some(result) -> results.push(try result)
-        None -> break
+        | Some(result) => results.push(try result)
+        | None => break
     Ok(results)
 ```
 
@@ -790,28 +790,28 @@ fn pipeline(input: Channel<RawData>) -> Result<(), Error>
     s.spawn(||
       loop
         match await input.recv()
-          Some(raw) ->
+          | Some(raw) =>
             let parsed = try parse(raw)
             await parsed_tx.send(parsed)
-          None -> break
+          | None => break
     )
 
     # Stage 2: Validate
     s.spawn(||
       loop
         match await parsed_rx.recv()
-          Some(parsed) ->
+          | Some(parsed) =>
             let valid = try validate(parsed)
             await validated_tx.send(valid)
-          None -> break
+          | None => break
     )
 
     # Stage 3: Store
     s.spawn(||
       loop
         match await validated_rx.recv()
-          Some(valid) -> try store(valid)
-          None -> break
+          | Some(valid) => try store(valid)
+          | None => break
     )
 
   Ok(())
@@ -828,12 +828,12 @@ fn supervised_worker(config: WorkerConfig) -> Result<(), Error>
 
   loop
     match run_worker(config)
-      Ok(()) -> return Ok(())
-      Err(e) if restarts < max_restarts ->
+      | Ok(()) => return Ok(())
+      | Err(e) if restarts < max_restarts =>
         log.warn("worker failed ({e}), restarting ({restarts + 1}/{max_restarts})")
         restarts += 1
         await sleep(Duration.from_secs(restarts * 2))  # exponential backoff
-      Err(e) ->
+      | Err(e) =>
         return Err(Error.WorkerFailed("exceeded max restarts: {e}"))
 ```
 
@@ -849,10 +849,10 @@ fn worker_pool(jobs: Channel<Job>, num_workers: UInt32) -> Result<(), Error>
       s.spawn(||
         loop
           match await rx.recv()
-            Some(job) ->
+            | Some(job) =>
               log.debug("worker {id} processing job {job.id}")
               try process_job(job)
-            None -> break  # channel closed, no more jobs
+            | None => break  # channel closed, no more jobs
       )
   Ok(())
 ```

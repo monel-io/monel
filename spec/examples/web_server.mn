@@ -1,6 +1,23 @@
 # Web Server — async REST API with middleware, database, rate limiting, and graceful shutdown
 # Demonstrates: async/await, structured concurrency, middleware chains, state machines,
-# per-error-variant contracts, effect tracking, and invariant enforcement
+# per-error-variant contracts, effect tracking, effect budgets, and invariant enforcement
+#
+# Effect budgets for this service (configured in monel.project):
+#
+#   [effects.budgets]
+#   "Db.write" = { max_per_second = 1000, max_per_request = 10 }
+#   "Db.read"  = { max_per_second = 5000, max_per_request = 50 }
+#   "Net.send" = { max_per_second = 200,  max_per_request = 5 }
+#
+#   [effects.policies]
+#   forbidden_combinations = [
+#     ["Crypto.decrypt", "Net.send"],   # prevent data exfiltration
+#     ["Db.write", "Log.write_raw"],    # prevent logging raw SQL mutations
+#   ]
+#
+# The compiler inserts counters at each effect site. When a budget is exceeded,
+# functions returning Result get Err(EffectBudgetExceeded); others log a warning.
+# Budgets are disabled in tests by default (--no-budgets).
 
 use std/http {Request, Response, Method, StatusCode, Header}
 use std/json {Json, FromJson, ToJson}

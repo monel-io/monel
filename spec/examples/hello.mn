@@ -1,0 +1,133 @@
+# Greeter — a hello world that showcases every Monel differentiator
+#
+# What's here that other languages don't have:
+#   1.  Type invariants (enforced by SMT)
+#   2.  requires: / ensures: contracts (verified by compiler)
+#   3.  Per-error-variant postconditions (err(X) => ...)
+#   4.  old() references — including collection transforms
+#   5.  Immutability inference (non-mut self → self unchanged)
+#   6.  Effect tracking (effects: [...])
+#   7.  panics: never (compiler-proven absence of panics)
+#   8.  panics: [...] (declared panic conditions, compiler-checked)
+#   9.  complexity: bounds (optimizer constraint)
+#   10. Compact one-liners (fn ... = expr)
+#   11. distinct types (nominal wrappers)
+
+use std/io {println}
+use std/time {Clock, Instant}
+
+# ─── Types ───
+
+type Name = distinct String
+
+type Greeter
+  invariant:
+    self.greet_count >= 0
+    self.name.len > 0
+    self.history.len == self.greet_count
+
+  name: Name
+  greet_count: Int
+  last_greeted: Option<Instant>
+  history: Vec<String>
+
+type GreetError
+  | EmptyMessage
+  | TooLong(Int)       # carries the length that exceeded the limit
+
+# ─── Construction ───
+
+fn new(name: String) -> Result<Greeter, GreetError>
+  requires: name.len > 0
+  ensures:
+    ok => result.greet_count == 0
+    ok => result.last_greeted == None
+    ok => result.history.is_empty()
+
+  Ok(Greeter
+    name: Name(name)
+    greet_count: 0
+    last_greeted: None
+    history: Vec.new())
+
+# ─── Core ───
+
+fn greet(self: mut Greeter, message: String) -> Result<String, GreetError>
+  requires: message.len <= 280
+  ensures:
+    ok => self.greet_count == old(self.greet_count) + 1
+    ok => self.history == old(self.history).append(result)
+    ok => result.contains(self.name.to_string())
+    err(EmptyMessage) => self == old(self)
+    err(TooLong(_)) => self == old(self)
+  effects: [Clock.read, Io.write]
+  panics: never
+
+  if message.is_empty()
+    return Err(GreetError.EmptyMessage)
+  if message.len > 280
+    return Err(GreetError.TooLong(message.len))
+
+  self.greet_count = self.greet_count + 1
+  self.last_greeted = Some(Clock.now())
+
+  let greeting = "{self.name}: {message}"
+  self.history.push(greeting)
+  println(greeting)
+  Ok(greeting)
+
+# ─── Queries (compact one-liners, immutable self) ───
+
+fn greet_count(self: Greeter) -> Int = self.greet_count
+fn name(self: Greeter) -> Name = self.name
+fn has_greeted(self: Greeter) -> Bool = self.greet_count > 0
+fn last_greeted(self: Greeter) -> Option<Instant> = self.last_greeted
+
+# ─── Nth — demonstrating panics: [...] (not never) ───
+
+fn nth(self: Greeter, index: Int) -> String
+  requires: index >= 0
+  ensures: result == self.history.get(index)
+  panics: index >= self.greet_count
+  complexity: O(1)
+
+  self.history.get(index)
+
+# ─── Search — demonstrating loop invariant and complexity bound ───
+
+fn find_greeting(self: Greeter, substring: String) -> Option<String>
+  ensures:
+    result is Some(s) => s.contains(substring)
+    result is Some(s) => self.history.contains(s)
+    result is None => self.history.all(g => not g.contains(substring))
+  panics: never
+  complexity: O(n) where n = self.history.len
+
+  for i in 0..self.history.len
+    invariant: self.history[0..i].all(g => not g.contains(substring))
+    if self.history.get(i).contains(substring)
+      return Some(self.history.get(i))
+  None
+
+# ─── Entry point ───
+
+fn main() -> Result<(), GreetError>
+  effects: [Clock.read, Io.write]
+  panics: never
+
+  let greeter = try new("World")
+  try greeter.greet("Hello!")
+  try greeter.greet("Monel says hi.")
+  try greeter.greet("Contracts are checked by the compiler.")
+
+  # safe — we know greet_count == 3
+  let first = greeter.nth(0)
+  println("First greeting: {first}")
+
+  # search with loop invariant
+  match greeter.find_greeting("Monel")
+    | Some(g) => println("Found: {g}")
+    | None => println("Not found")
+
+  println("Greeted {greeter.greet_count()} times.")
+  Ok(())

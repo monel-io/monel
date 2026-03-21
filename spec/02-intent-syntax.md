@@ -118,9 +118,11 @@ If the body performs an undeclared effect, compilation fails. If the body does n
 
 A function with no `effects:` declaration is pure. See Chapter 5 (Effect System) for the full specification.
 
-### 2.3.4 `panics: never`
+### 2.3.4 `panics:`
 
-Declares that no reachable code path in the function can panic. The compiler proves this via static analysis. Proof obligations include:
+Declares the panic behavior of a function. Two forms:
+
+**`panics: never`** — the function cannot panic under any circumstances. The compiler proves this via static analysis. Proof obligations include:
 
 - No explicit `panic()` calls reachable
 - No array index without bounds proof
@@ -149,13 +151,36 @@ error[S0104]: function declared `panics: never` but may panic
    = help: use `list.get(index)` which returns `Option<T>`
 ```
 
+**`panics: <condition>`** — the function may panic, but only when the condition holds. The compiler verifies that all panic paths satisfy the declared condition and that no panic occurs when the condition is false.
+
+```
+fn nth(self: Greeter, index: Int) -> String
+  requires: index >= 0
+  panics: index >= self.greet_count
+  self.history.get(index)
+
+fn format(template: String, args: Vec<String>) -> String
+  panics: args.len != template.placeholder_count()
+  ...
+```
+
+When `panics:` is omitted entirely, the function may panic under unspecified conditions (the default). This is different from `panics: never` (proven panic-free) and `panics: <condition>` (documented, compiler-checked panic conditions).
+
 ### 2.3.5 `complexity:`
 
 Declares an asymptotic upper bound. The optimizer must not introduce transformations that violate this bound.
 
 ```
-fn find(haystack: &Vec<T>, needle: &T) -> Option<UInt>
+fn find(haystack: Vec<T>, needle: T) -> Option<Int>
   complexity: O(n)
+  ...
+```
+
+The `where` clause binds variables to sizes for multi-parameter bounds:
+
+```
+fn find_greeting(self: Greeter, substring: String) -> Option<String>
+  complexity: O(n) where n = self.history.len
   ...
 ```
 
@@ -163,23 +188,38 @@ The compiler uses `complexity:` as an optimizer constraint: if an optimization p
 
 ### 2.3.6 `invariant:`
 
-Declares a predicate on a type that must hold after every constructor call and after every method that takes `&mut self`. Public methods may assume the invariant holds at entry.
+Declares a predicate that must hold at specified points. Two forms:
+
+**Type invariants** — hold after every constructor and after every method that takes `mut self`:
 
 ```
 type BoundedQueue<T>
-  items: Vec<T>
-  capacity: UInt
-
   invariant:
-    self.items.len() <= self.capacity
+    self.items.len <= self.capacity
     self.capacity > 0
+
+  items: Vec<T>
+  capacity: Int
 ```
 
 The compiler inserts proof obligations:
 
 - After every constructor (including factory methods that return `Self`), the invariant must hold.
-- After every method with `&mut self`, the invariant must hold at every return point.
+- After every method with `mut self`, the invariant must hold at every return point.
 - At the start of every public method, the invariant is assumed (the caller is responsible for ensuring it).
+
+**Loop invariants** — hold at the start of each loop iteration:
+
+```
+fn find_greeting(self: Greeter, substring: String) -> Option<String>
+  for i in 0..self.history.len
+    invariant: self.history[0..i].all(g => not g.contains(substring))
+    if self.history.get(i).contains(substring)
+      return Some(self.history.get(i))
+  None
+```
+
+Loop invariants help the SMT solver verify `ensures:` clauses that depend on loop behavior. When the solver cannot prove a postcondition involving a loop, it suggests adding a loop invariant.
 
 ### 2.3.7 `fails:`
 
@@ -332,14 +372,14 @@ When contracts are present on functions that accept or return refined types, the
 Distinct types prevent accidental substitution of structurally identical types:
 
 ```
-distinct type UserId = Int
-distinct type OrderId = Int
+type UserId = distinct Int
+type OrderId = distinct Int
 ```
 
 Distinct types may carry invariants via refinement:
 
 ```
-distinct type Port = Int where value >= 1 and value <= 65535
+type Port = distinct Int where value >= 1 and value <= 65535
 ```
 
 ### 2.5.4 Enum Types
@@ -347,12 +387,12 @@ distinct type Port = Int where value >= 1 and value <= 65535
 Enum types may carry `invariant:` clauses on individual variants:
 
 ```
-enum Shape
-  Circle(radius: Float)
+type Shape
+  | Circle(radius: Float)
     invariant: radius > 0.0
-  Rectangle(width: Float, height: Float)
+  | Rectangle(width: Float, height: Float)
     invariant: width > 0.0 and height > 0.0
-  Triangle(a: Float, b: Float, c: Float)
+  | Triangle(a: Float, b: Float, c: Float)
     invariant: a + b > c and b + c > a and a + c > b
 ```
 
@@ -377,13 +417,13 @@ state_machine OrderLifecycle
     Cancelled
 
   transitions:
-    Created -> Validated: validate_order
-    Created -> Cancelled: cancel_order
-    Validated -> Paid: charge_payment
-    Validated -> Cancelled: cancel_order
-    Paid -> Shipped: ship_order
-    Paid -> Cancelled: cancel_and_refund
-    Shipped -> Delivered: confirm_delivery
+    Created   --validate_order-->   Validated
+    Created   --cancel_order-->     Cancelled
+    Validated --charge_payment-->   Paid
+    Validated --cancel_order-->     Cancelled
+    Paid      --ship_order-->       Shipped
+    Paid      --cancel_and_refund--> Cancelled
+    Shipped   --confirm_delivery--> Delivered
 
   initial: Created
   terminal: [Delivered, Cancelled]
@@ -404,7 +444,7 @@ The compiler verifies:
 Transition functions follow normal contract syntax:
 
 ```
-fn validate_order(order: &mut Order) -> Result<Unit, OrderError>
+fn validate_order(order: mut Order) -> Result<Unit, OrderError>
   requires:
     order.state == OrderState.Created
   ensures:
@@ -462,14 +502,14 @@ interaction SearchFlow
     error
 
   transitions:
-    idle -> typing: on_keystroke
-    typing -> typing: on_keystroke
-    typing -> loading: debounce_expired
-    loading -> results: search_success
-    loading -> error: search_failure
-    results -> typing: on_keystroke
-    results -> selected: on_select
-    error -> typing: on_keystroke
+    idle    --on_keystroke-->     typing
+    typing  --on_keystroke-->     typing
+    typing  --debounce_expired--> loading
+    loading --search_success-->  results
+    loading --search_failure-->  error
+    results --on_keystroke-->    typing
+    results --on_select-->       selected
+    error   --on_keystroke-->    typing
 ```
 
 The compiler applies the same state machine verification rules as Section 2.6, adapted to event-driven transitions.
@@ -581,9 +621,9 @@ effect          = "pure"
                 | "unsafe"
                 | IDENT "." ( IDENT | "*" ) ;
 
-panics_clause   = "panics:" "never" ;
+panics_clause   = "panics:" ( "never" | predicate_expr ) ;
 
-complexity_clause = "complexity:" COMPLEXITY_LITERAL ;
+complexity_clause = "complexity:" COMPLEXITY_LITERAL ( "where" IDENT "=" expr )? ;
 (* COMPLEXITY_LITERAL matches O(1), O(n), O(n log n), O(n^2), etc. *)
 
 fails_clause    = "fails:" INDENT
@@ -618,28 +658,28 @@ type_decl       = struct_decl
                 | refined_decl ;
 
 struct_decl     = "type" IDENT generic_params? INDENT
-                    field_decl+
                     invariant_clause?
+                    ( derives_clause )?
+                    field_decl+
                   DEDENT ;
+
+derives_clause  = "derives:" "[" IDENT ( "," IDENT )* "]" ;
 
 field_decl      = IDENT ":" type_expr NEWLINE ;
 
-enum_decl       = "enum" IDENT generic_params? INDENT
+enum_decl       = "type" IDENT generic_params? INDENT
                     variant_decl+
                   DEDENT ;
 
-variant_decl    = IDENT ( "(" field_list ")" )? NEWLINE
+variant_decl    = "|" IDENT ( "(" field_list ")" )? NEWLINE
                   ( INDENT invariant_clause DEDENT )? ;
 
 field_list      = IDENT ":" type_expr ( "," IDENT ":" type_expr )* ;
 
 alias_decl      = "type" IDENT "=" type_expr ;
 
-distinct_decl   = "distinct" "type" IDENT "=" type_expr
-                  ( "where" predicate_expr )?
-                | "distinct" "struct" IDENT INDENT
-                    field_decl+
-                  DEDENT ;
+distinct_decl   = "type" IDENT "=" "distinct" type_expr
+                  ( "where" predicate_expr )? ;
 
 refined_decl    = "type" IDENT "=" type_expr "where" predicate_expr ;
 
@@ -665,7 +705,7 @@ transitions_block = "transitions:" INDENT
                       transition_line+
                     DEDENT ;
 
-transition_line = IDENT "->" IDENT ":" IDENT NEWLINE ;
+transition_line = IDENT "--" IDENT "-->" IDENT NEWLINE ;
 
 initial_decl    = "initial:" IDENT ;
 terminal_decl   = "terminal:" "[" IDENT ( "," IDENT )* "]" ;
@@ -733,10 +773,10 @@ type Session
     self.token.len() > 0
     self.expires_at > Timestamp.epoch()
 
-enum AuthError
-  InvalidCreds
-  Locked
-  Expired
+type AuthError
+  | InvalidCreds
+  | Locked
+  | Expired
 
 fn authenticate(creds: Credentials) -> Result<Session, AuthError>
   doc: "Verify credentials against the user database and return a session."

@@ -122,7 +122,7 @@ struct Ptr<T>
 
 | Operation | Signature | Description |
 |-----------|-----------|-------------|
-| `from_ref` | `fn from_ref(ref: &T) -> Ptr<T>` | Create pointer from reference |
+| `from_ref` | `fn from_ref(ref: T) -> Ptr<T>` | Create pointer from reference |
 | `read` | `fn read(self) -> T` | Read the pointed-to value |
 | `offset` | `fn offset(self, count: Int) -> Ptr<T>` | Pointer arithmetic |
 | `cast<U>` | `fn cast<U>(self) -> Ptr<U>` | Reinterpret as different type |
@@ -199,8 +199,8 @@ fn process()
 
 Values can be borrowed without transferring ownership:
 
-- `&T` — immutable borrow (multiple allowed simultaneously)
-- `&mut T` — mutable borrow (exclusive: no other borrows while active)
+- `T` (non-mut parameter) — immutable borrow (multiple allowed simultaneously)
+- `mut T` — mutable borrow (exclusive: no other borrows while active)
 
 ```
 fn print_len(buf: Buffer)
@@ -263,7 +263,7 @@ Arena types:
 - `TypedArena<T>` — arena for a single type, enables iteration over allocated values.
 - `ScopedArena` — arena tied to a lexical scope, cannot escape.
 
-Arena allocation requires the `unsafe` effect only for raw pointer access. The `Arena.alloc<T>()` method returns a safe reference `&T` bound to the arena's lifetime.
+Arena allocation requires the `unsafe` effect only for raw pointer access. The `Arena.alloc<T>()` method returns a safe reference bound to the arena's lifetime.
 
 ### 10.3.6 Custom Allocators
 
@@ -382,7 +382,7 @@ The callback function must have a C-compatible signature (no closures that captu
 
 ```
 @extern_fn
-fn make_handler(state: &mut State) -> fn(Int) -> Unit
+fn make_handler(state: mut State) -> fn(Int) -> Unit
   // compiler generates a trampoline
 ```
 
@@ -424,7 +424,7 @@ fn get_terminal_attrs(fd: Fd) -> Result<Termios, IoError>
 
   let mut attrs = Termios.zeroed()
   let result = unsafe
-    tcgetattr(fd.raw(), &mut attrs as MutPtr<Termios>)
+    tcgetattr(fd.raw(), attrs.as_mut_ptr())
   if result == -1
     Err(IoError.last_os_error())
   else
@@ -579,17 +579,17 @@ effect Signal
 Signal kinds:
 
 ```
-enum SignalKind
-  Hup
-  Int
-  Quit
-  Term
-  Child
-  Winch
-  Usr1
-  Usr2
-  Pipe
-  Alarm
+type SignalKind
+  | Hup
+  | Int
+  | Quit
+  | Term
+  | Child
+  | Winch
+  | Usr1
+  | Usr2
+  | Pipe
+  | Alarm
 ```
 
 ### 10.6.2 Signal Handler Registration
@@ -773,11 +773,11 @@ struct Glyph
 struct Atlas
   // Texture atlas for glyph caching
 
-enum Color
-  Rgb(r: UInt8, g: UInt8, b: UInt8)
-  Rgba(r: UInt8, g: UInt8, b: UInt8, a: UInt8)
-  Indexed(index: UInt8)
-  Default
+type Color
+  | Rgb(r: UInt8, g: UInt8, b: UInt8)
+  | Rgba(r: UInt8, g: UInt8, b: UInt8, a: UInt8)
+  | Indexed(index: UInt8)
+  | Default
 ```
 
 ### 10.8.3 Renderer Lifecycle
@@ -789,13 +789,13 @@ fn Renderer.new(config: RenderConfig) -> Result<Renderer, RenderError>
   panics: never
   // ...
 
-fn Renderer.draw(self: &mut Renderer, scene: &Scene) -> Result<Unit, RenderError>
+fn Renderer.draw(self: mut Renderer, scene: Scene) -> Result<Unit, RenderError>
   doc: "renders the scene to the display, computing minimal diff from previous frame"
   effects: [unsafe, Gpu]
   panics: never
   // ...
 
-fn Renderer.resize(self: &mut Renderer, width: UInt32, height: UInt32) -> Result<Unit, RenderError>
+fn Renderer.resize(self: mut Renderer, width: UInt32, height: UInt32) -> Result<Unit, RenderError>
   doc: "handles display resize"
   effects: [unsafe, Gpu]
   panics: never
@@ -848,7 +848,7 @@ fn EventLoop.new() -> Result<EventLoop, IoError>
   panics: never
   // ...
 
-fn EventLoop.run(self: &mut EventLoop, handler: fn(Event) -> LoopControl) -> Result<Unit, IoError>
+fn EventLoop.run(self: mut EventLoop, handler: fn(Event) -> LoopControl) -> Result<Unit, IoError>
   doc: "runs the event loop, dispatching events to the handler until it returns Break"
   effects: [unsafe, Async]
   panics: never
@@ -858,24 +858,24 @@ fn EventLoop.run(self: &mut EventLoop, handler: fn(Event) -> LoopControl) -> Res
 ### 10.9.2 Event Types
 
 ```
-enum Event
-  Input(InputEvent)
-  Resize(width: UInt16, height: UInt16)
-  Signal(SignalKind)
-  Timer(TimerId)
-  IoReady(Fd, IoReadiness)
-  Custom(Box<dyn Any>)
+type Event
+  | Input(InputEvent)
+  | Resize(width: UInt16, height: UInt16)
+  | Signal(SignalKind)
+  | Timer(TimerId)
+  | IoReady(Fd, IoReadiness)
+  | Custom(Box<dyn Any>)
 
-enum InputEvent
-  Key(KeyEvent)
-  Mouse(MouseEvent)
-  Paste(String)
-  FocusGained
-  FocusLost
+type InputEvent
+  | Key(KeyEvent)
+  | Mouse(MouseEvent)
+  | Paste(String)
+  | FocusGained
+  | FocusLost
 
-enum LoopControl
-  Continue
-  Break
+type LoopControl
+  | Continue
+  | Break
 ```
 
 ### 10.9.3 Event Source Registration
@@ -887,13 +887,13 @@ fn EventLoop.register_fd(self: mut EventLoop, fd: Fd, interest: IoReadiness) -> 
   panics: never
   // ...
 
-fn EventLoop.register_timer(self: &mut EventLoop, duration: Duration, repeat: Bool) -> TimerId
+fn EventLoop.register_timer(self: mut EventLoop, duration: Duration, repeat: Bool) -> TimerId
   doc: "registers a timer that fires after the given duration"
   effects: []
   panics: never
   // ...
 
-fn EventLoop.register_signal(self: &mut EventLoop, sig: SignalKind) -> Result<Unit, IoError>
+fn EventLoop.register_signal(self: mut EventLoop, sig: SignalKind) -> Result<Unit, IoError>
   doc: "registers a signal for event loop delivery"
   effects: [unsafe, Signal]
   panics: never
@@ -932,7 +932,7 @@ fn run(config: TermConfig) -> Result<Unit, TermError>
   let mut app = App.new(pty, renderer, config)
   let mut event_loop = EventLoop.new()?
 
-  event_loop.register_fd(&app.pty.master, IoReadiness.Read)?
+  event_loop.register_fd(app.pty.master, IoReadiness.Read)?
   event_loop.register_signal(SignalKind.Winch)?
 
   pty.spawn(config.shell, [])?
@@ -940,16 +940,16 @@ fn run(config: TermConfig) -> Result<Unit, TermError>
   event_loop.run(|event|
     match event
       Event.Input(input) =>
-        handle_input(&mut app, input)
+        handle_input(app, input)
       Event.IoReady(fd, _) if fd == app.pty.master.raw() =>
-        let n = app.pty.master.read(&mut app.read_buf)?
-        app.parser.advance(&app.read_buf[..n])
-        render_frame(&app, &mut app.renderer)?
+        let n = app.pty.master.read(app.read_buf)?
+        app.parser.advance(app.read_buf[..n])
+        render_frame(app, app.renderer)?
         LoopControl.Continue
       Event.Resize(w, h) =>
         app.pty.resize(h, w)?
         app.renderer.resize(w as UInt32, h as UInt32)?
-        render_frame(&app, &mut app.renderer)?
+        render_frame(app, app.renderer)?
         LoopControl.Continue
       Event.Signal(SignalKind.Winch) =>
         let size = terminal.size()?
@@ -960,13 +960,13 @@ fn run(config: TermConfig) -> Result<Unit, TermError>
   )?
   Ok(())
 
-fn handle_input(app: &mut App, event: InputEvent) -> LoopControl
+fn handle_input(app: mut App, event: InputEvent) -> LoopControl
   doc: "processes keyboard and mouse input, sends to PTY"
   effects: [Fs.write]
   panics: never
   // ...
 
-fn render_frame(app: &App, renderer: &mut Renderer) -> Result<Unit, RenderError>
+fn render_frame(app: App, renderer: mut Renderer) -> Result<Unit, RenderError>
   doc: "renders the current terminal state to the display"
   effects: [unsafe, Gpu]
   panics: never
@@ -993,7 +993,7 @@ unsafe
 
 ```
 // In function contract: safety block
-fn write_cell(grid: &mut Grid, row: Int, col: Int, cell: Cell)
+fn write_cell(grid: mut Grid, row: Int, col: Int, cell: Cell)
   doc: "writes a cell at the given position in the grid"
   effects: [unsafe]
   panics: "if row or col is out of bounds"

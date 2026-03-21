@@ -29,8 +29,8 @@ It is a sum type with exactly two variants. `T` is the success value, `E` is the
 fn find_user(name: String) -> Result<User, DbError>
   let row = try Db.query("SELECT * FROM users WHERE name = ?", [name])
   match row
-    Some(r) -> Ok(User.from_row(r))
-    None -> Err(DbError.NotFound("user not found: {name}"))
+    | Some(r) => Ok(User.from_row(r))
+    | None => Err(DbError.NotFound("user not found: {name}"))
 ```
 
 ## 8.4 Error Type Declarations
@@ -240,9 +240,9 @@ Every `match` on a `Result` or error type must handle all variants:
 
 ```
 match result
-  Ok(session) -> use_session(session)
-  Err(AuthError.InvalidCreds) -> show_login_error()
-  Err(AuthError.Locked) -> show_locked_message()
+  | Ok(session) => use_session(session)
+  | Err(AuthError.InvalidCreds) => show_login_error()
+  | Err(AuthError.Locked) => show_locked_message()
   # compiler error: non-exhaustive match, missing Err(AuthError.Expired)
 ```
 
@@ -719,9 +719,9 @@ fn fetch_with_retry(url: Url, max_attempts: UInt32) -> Result<Response, HttpErro
   loop
     attempt += 1
     match fetch(url)
-      Ok(response) -> return Ok(response)
-      Err(e) if e.is_transient() and attempt < max_attempts ->
+      | Ok(response) => return Ok(response)
+      | Err(e) if e.is_transient() and attempt < max_attempts =>
         sleep(Duration.from_millis(100 * 2.pow(attempt)))
         continue
-      Err(e) -> return Err(e)
+      | Err(e) => return Err(e)
 ```

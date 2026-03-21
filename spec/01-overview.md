@@ -222,7 +222,7 @@ Monel has two layers: **source** and **compiler**. Contracts and implementation 
 
 **Purpose:** Verify that implementation corresponds to intent. Produce executable artifacts.
 
-**Mechanism:** A six-stage compilation pipeline (see Section 1.7). The compiler is the source of truth for whether an implementation satisfies its intent. It replaces the human burden of tracing generated code with automated, reproducible verification.
+**Mechanism:** A four-stage compilation pipeline (see Section 1.7). The compiler is the source of truth for whether an implementation satisfies its contracts. It replaces the human burden of tracing generated code with automated, reproducible verification.
 
 **Output:**
 - Parity reports: per-function and per-module summaries of verification results
@@ -341,14 +341,12 @@ Monel's code generation stage has access to the full intent layer — both the i
 {
   "monel_version": "0.1.0",
   "build_hash": "sha256:abc123...",
-  "intent_hash": "sha256:def456...",
-  "parity": {
-    "structural": "pass",
-    "static_verification": "pass",
-    "semantic": {"status": "pass", "model": "claude-sonnet-4-20250514", "cached": true},
-    "strict_functions": 12,
+  "source_hash": "sha256:def456...",
+  "verification": {
+    "contracts_verified": 12,
     "smt_proofs": 12,
     "panic_free_functions": 8,
+    "effect_check": "pass",
     "effect_budgets": "all within limits"
   }
 }

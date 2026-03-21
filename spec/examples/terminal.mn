@@ -72,6 +72,25 @@ layout TerminalView
   responsive:
     width < 40 cols => hide status_bar
 
+interaction TerminalInput
+  states:
+    normal
+    selecting
+    scrollback
+    pasting
+
+  transitions:
+    normal    -> selecting:  on_mouse_down
+    normal    -> scrollback: on_scroll_up
+    normal    -> pasting:    on_paste_start
+    selecting -> selecting:  on_mouse_move
+    selecting -> normal:     on_mouse_up         # copies selection
+    selecting -> normal:     on_keystroke         # cancels selection
+    scrollback -> scrollback: on_scroll_up
+    scrollback -> scrollback: on_scroll_down
+    scrollback -> normal:    on_keystroke         # returns to live output
+    pasting   -> normal:     on_paste_end
+
 fn init(config: TerminalConfig) -> Result<Terminal, TerminalError>
   requires:
     config.rows > 0

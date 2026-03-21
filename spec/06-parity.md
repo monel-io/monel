@@ -307,13 +307,13 @@ stateDiagram-v2
 The implementation represents states as an enum and transitions as functions:
 
 ```
-enum OrderState
-  Created
-  Validated
-  Paid
-  Shipped
-  Delivered
-  Cancelled
+type OrderState
+  | Created
+  | Validated
+  | Paid
+  | Shipped
+  | Delivered
+  | Cancelled
 
 fn validate_order(order: &mut Order) -> Result<Unit, OrderError>
   effects: [Db.read]

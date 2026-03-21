@@ -133,17 +133,17 @@ let tags: Set<String> = {"alpha", "beta"}
 `Option<T>` represents a value that may be absent:
 
 ```
-enum Option<T>
-  Some(T)
-  None
+type Option<T>
+  | Some(T)
+  | None
 ```
 
 `Result<T, E>` represents a computation that may fail:
 
 ```
-enum Result<T, E>
-  Ok(T)
-  Err(E)
+type Result<T, E>
+  | Ok(T)
+  | Err(E)
 ```
 
 Both are fundamental to error handling (see Chapter 7). The `?` operator propagates `None` or `Err` to the caller.
@@ -259,8 +259,8 @@ Structural typing does NOT apply:
 When accidental substitution of structurally-identical types would be a bug, use `distinct type` to create a nominal wrapper:
 
 ```
-distinct type UserId = Int
-distinct type OrderId = Int
+type UserId = distinct Int
+type OrderId = distinct Int
 
 fn get_user(id: UserId) -> User
   // ...
@@ -278,14 +278,14 @@ get_user(42)    // COMPILE ERROR: Int is not UserId
 - A `distinct type` creates a new nominal type that is NOT structurally equivalent to its underlying type.
 - Explicit conversion is required: `UserId(42)` to wrap, `uid.value` to unwrap.
 - Distinct types can implement traits independently of their underlying type.
-- Distinct types can opt in to inheriting operations from their underlying type with `deriving`:
+- Distinct types can opt in to inheriting operations from their underlying type with `derives`:
 
 ```
-distinct type Celsius = Float
-  deriving: [Add, Sub, Ord, Eq, Display]
+type Celsius = distinct Float
+  derives: [Add, Sub, Ord, Eq, Display]
 ```
 
-Without `deriving`, no operations from the underlying type are available.
+Without `derives`, no operations from the underlying type are available.
 
 ### 4.6.2 Distinct Struct Types
 
@@ -305,7 +305,7 @@ struct Point
 
 ### 4.6.3 Rationale
 
-Domain-specific types like `Port`, `UserId`, `Email` should not be accidentally mixed with raw `Int` or `String` values. `distinct type` enforces this. The compiler verifies that types declared as semantically distinct are implemented as `distinct type`.
+Domain-specific types like `Port`, `UserId`, `Email` should not be accidentally mixed with raw `Int` or `String` values. The `distinct` modifier enforces this. The compiler verifies that types declared as semantically distinct use `type X = distinct Y`.
 
 ---
 
@@ -327,23 +327,23 @@ Aliases are expanded during compilation. They exist purely for readability and d
 
 ### 4.8.1 Enums
 
-Enums define a type that is one of several variants:
+Enums define a type that is one of several variants, using `|` to separate each variant:
 
 ```
-enum Shape
-  Circle(radius: Float)
-  Rectangle(width: Float, height: Float)
-  Triangle(a: Float, b: Float, c: Float)
+type Shape
+  | Circle(radius: Float)
+  | Rectangle(width: Float, height: Float)
+  | Triangle(a: Float, b: Float, c: Float)
 ```
 
 Variants can hold data (as above), or be unit variants:
 
 ```
-enum Direction
-  North
-  South
-  East
-  West
+type Direction
+  | North
+  | South
+  | East
+  | West
 ```
 
 Pattern matching on enums must be exhaustive:
@@ -383,10 +383,10 @@ These constraints become compile-time proof obligations when preconditions are s
 Enums may be recursive. Recursive variants must be behind a pointer (typically `Box<T>`):
 
 ```
-enum Expr
-  Literal(Int)
-  Add(Box<Expr>, Box<Expr>)
-  Mul(Box<Expr>, Box<Expr>)
+type Expr
+  | Literal(Int)
+  | Add(Box<Expr>, Box<Expr>)
+  | Mul(Box<Expr>, Box<Expr>)
 ```
 
 ---
@@ -495,7 +495,7 @@ Types that implement the `Copy` trait are copied instead of moved. All primitive
 struct Point
   x: Float
   y: Float
-  deriving: [Copy]
+  derives: [Copy]
 ```
 
 ### 4.10.3 Borrowing Rules
@@ -605,9 +605,9 @@ struct Pair<A, B>
   first: A
   second: B
 
-enum Tree<T>
-  Leaf(T)
-  Branch(Box<Tree<T>>, Box<Tree<T>>)
+type Tree<T>
+  | Leaf(T)
+  | Branch(Box<Tree<T>>, Box<Tree<T>>)
 ```
 
 ### 4.11.3 Trait Bounds
