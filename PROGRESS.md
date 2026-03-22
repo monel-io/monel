@@ -28,7 +28,7 @@ Key architecture changes (v0.1 → v0.2):
 - **Single-file**: Contracts and implementation co-located in `.mn` files. No `.mn.intent` files.
 - **No LLM in compiler**: All verification is deterministic (type checking, borrow checking, effect checking, SMT contract verification). LLM is an authoring tool only.
 - **Formal contracts**: `requires:`, `ensures:`, `invariant:`, `effects:`, `panics: never` — verified by SMT solver, not LLM.
-- **Per-error-variant postconditions**: `err(Overflow) => self == old(self)` — unique to Monel.
+- **Per-error-variant postconditions**: `err(Overflow) => self == old(self)` — similar to SPARK Ada's `Exceptional_Cases`, adapted for algebraic error types.
 - **`doc:` replaces `does:`**: Optional documentation string, never compiled or verified.
 - **Verification coverage**: Compiler tracks what's SMT-proven vs property-tested vs uncovered. Metric = (proven ∪ tested) / total behavior.
 - **Contract-driven test generation**: `monel test --gen-contract-tests` mechanically generates property tests from contracts.

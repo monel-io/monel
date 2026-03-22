@@ -93,23 +93,25 @@ The SDD movement has produced 30+ tools with over 100k combined GitHub stars. Op
 
 These tools validate the demand — developers want spec-first AI workflows — but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. No tool in the SDD stack detects this divergence.
 
-#### Design-by-Contract Libraries (deal, icontract, Rust `contracts`)
+#### Design-by-Contract Libraries (deal, icontract, Rust `contracts`, Prusti)
 
-Languages like Python and Rust have libraries that add preconditions, postconditions, and invariants to functions. Python's `deal` (875 stars) includes a static linter. Python's `icontract` integrates with CrossHair for SMT-based symbolic verification. Rust's `contracts` crate (29 stars) provides `#[requires]`/`#[ensures]` macros.
+Languages like Python and Rust have libraries that add preconditions, postconditions, and invariants to functions. Python's `deal` (875 stars) includes a static linter. Python's `icontract` integrates with CrossHair for SMT-based symbolic verification. Rust's `contracts` crate (29 stars) provides `#[requires]`/`#[ensures]` macros. Prusti (1.6k stars) verifies Rust code against pre/postconditions via SMT, including `old()` references and panic freedom proofs.
 
 Rust is adding official contract support (MCP-759) to annotate unsafe stdlib functions — but only for `unsafe` code, not general specification enforcement.
 
-**What they do:** Add runtime assertions for pre/post conditions. Some offer partial static checking.
+**What they do:** Add pre/postconditions to existing languages. Range from runtime assertions (deal, contracts crate) to full SMT verification (Prusti, icontract+CrossHair).
 
-**What they do not do:** Verify behavioral parity between a specification and implementation. They verify individual assertions, not "does this function do what the spec says it should do." They also do not track side effects.
+**What they do not do:** Track side effects or provide an integrated effect system. Contract annotations are bolted onto an existing language's syntax — they work within the host language's type system and toolchain rather than co-designing both together.
 
-#### Formal Verification Languages (Dafny, Verus)
+#### Formal Verification Languages and Tools (SPARK Ada, Dafny, Verus)
 
-Dafny (3.3k stars, Microsoft Research) and Verus (2.4k stars) provide true static verification — they prove code correctness for all possible inputs using SMT solvers.
+SPARK Ada is the most established production formal verification system, used in avionics, rail, and defense since 2014. It proves absence of runtime errors, verifies pre/postconditions via SMT (Z3/CVC5), supports `old()` references in postconditions, and since SPARK 2024 provides per-exception postconditions via `Exceptional_Cases`. SPARK is not a separate language — it is a formally verifiable subset of Ada with an industrial-grade toolchain (GNAT/GNATprove).
 
-**What they do:** Prove that code satisfies formal specifications. Verus works on a subset of Rust. Dafny compiles to C#, Go, Python, Java. Both use Z3 for proof.
+Dafny (3.3k stars, Microsoft Research) and Verus (2.4k stars) provide SMT-based static verification. Verus works on a subset of Rust. Dafny compiles to C#, Go, Python, Java. Both use Z3 for proof.
 
-**What they do not do:** Scale to everyday development. Both require heavy annotation (proof obligations, ghost code, loop invariants). Verus supports only a Rust subset. Dafny is a separate language. Neither has achieved mainstream adoption. Martin Kleppmann's influential thesis (Dec 2025) argues AI will eventually make formal verification mainstream, but this has not happened yet.
+**What they do:** Prove that code satisfies formal specifications for all valid inputs. SPARK has decades of production deployment. Dafny and Verus are newer but have strong academic backing.
+
+**What they do not do:** Integrate effect tracking. SPARK verifies contracts and absence of runtime errors but does not have a first-class effect system. Dafny and Verus require heavy annotation (proof obligations, ghost code). Verus supports only a Rust subset. Martin Kleppmann's influential thesis (Dec 2025) argues AI will eventually make formal verification mainstream, but adoption outside safety-critical domains remains limited.
 
 #### Effect Systems (Effect-TS, Koka, Effekt)
 
@@ -140,15 +142,17 @@ quadrantChart
     quadrant-4 Hard and shallow
     OpenSpec: [0.2, 0.1]
     Spec Kit: [0.2, 0.1]
+    SPARK Ada: [0.65, 0.95]
     Dafny: [0.85, 0.95]
     Verus: [0.75, 0.9]
+    Prusti: [0.55, 0.75]
     deal/icontract: [0.3, 0.35]
     Effect-TS: [0.55, 0.4]
     Koka: [0.7, 0.5]
     Monel: [0.5, 0.7]
 ```
 
-The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Monel targets the gap: **the compiler verifies meaningfully without demanding formal methods expertise from the developer**.
+The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Prusti occupies the middle — strong verification on existing Rust, but no effect tracking and limited to Rust's syntax. Monel targets a similar depth with lower annotation burden by co-designing the language and verification system together, and adds a first-class effect system that no existing tool provides.
 
 #### Why a Language, Not a Tool
 
@@ -160,19 +164,20 @@ Three capabilities suggest a language rather than a tool:
 
 3. **Inline contracts are a syntax decision.** `requires:`/`ensures:` with SMT verification, `effects:` with inference checking, `panics: never` with static proof — these need to be part of the function declaration syntax, not bolted on as annotations.
 
-The closest related project is Verus (formal verification for Rust). Verus proves properties of existing Rust code for critical sections; Monel enforces spec-implementation correspondence as a default workflow.
+The closest related projects are SPARK Ada (production formal verification with per-exception postconditions), Prusti (SMT verification for Rust with `old()` and panic freedom), and Verus (proof-oriented Rust subset). These verify properties of existing language code. Monel's bet is that co-designing the language, contract system, and effect system together — rather than bolting verification onto an existing language — produces lower annotation burden and enables optimizations (effect-aware codegen, contract-driven test generation) that external tools cannot perform.
 
 #### Comparison Table
 
-| | SDD Tools | DbC Libraries | Formal Verification | Monel |
+| | SDD Tools | DbC Libraries | Formal Verification (SPARK, Dafny, Verus) | Monel |
 |---|---|---|---|---|
-| **Spec format** | Markdown | Decorators/macros | Proof annotations | Inline contracts |
-| **Enforcement** | Convention | Runtime assertions | Static proof | Compiler-verified contracts |
-| **Effect tracking** | None | `@pure` only (deal) | N/A | First-class effect system |
-| **Verification depth** | None | Pre/post conditions | Full correctness proof | Contracts + effects + SMT |
+| **Spec format** | Markdown | Decorators/macros | Proof annotations / aspects | Inline contracts |
+| **Enforcement** | Convention | Runtime or static (varies) | Static proof | Compiler-verified contracts |
+| **Effect tracking** | None | `@pure` only (deal) | None | First-class effect system |
+| **Contract verification** | None | Runtime (deal) to SMT (Prusti) | Full SMT proof | SMT proof |
+| **Per-error postconditions** | No | No | SPARK (since 2024) | Yes |
 | **Annotation burden** | Low | Medium | High | Low to Medium |
-| **Works with existing languages** | Yes | Yes | Partial (Verus/Rust) | No |
-| **Deterministic** | N/A | Yes (runtime) | Yes (static) | Yes (fully deterministic) |
+| **Works with existing languages** | Yes | Yes | Yes (SPARK/Ada, Verus/Rust, Prusti/Rust) | No (new language) |
+| **Production track record** | Varied | Limited | SPARK: decades in safety-critical | None |
 | **AI-agent optimized** | Workflow only | No | No | Query oracle, context gathering, edit-compatible errors |
 
 Convention-based SDD tools are Monel's natural on-ramp: teams already using spec-first workflows are the ideal early adopters.
@@ -193,7 +198,7 @@ The language will be validated by building three substantial applications:
 2. **Terminal multiplexer** — a replacement for zellij, exercising layout management, IPC, plugin systems, and session persistence.
 3. **Text editor** — a replacement for vim, exercising modal input handling, buffer management, syntax highlighting, and extensibility.
 
-These projects are chosen because they demand systems-level performance, have rich UI requirements, and are complex enough to stress-test the intent/implementation separation at scale.
+These projects are chosen because they demand systems-level performance, have rich UI requirements, and are complex enough to stress-test the contract/verification system at scale.
 
 ---
 
@@ -292,11 +297,11 @@ graph TD
 
 ### Stage 3: Code Generation
 
-**Input:** Verified Implementation ASTs, intent ASTs, effect analysis, parity map.
+**Input:** Verified ASTs, effect analysis, contract metadata.
 
-Monel's code generation stage has access to the full intent layer — both the implementation code and the intent declarations. This enables intent-aware optimizations.
+Monel's code generation stage has access to verified contracts alongside implementation code. This enables contract-guided optimizations.
 
-**Operation:** Lower the verified ASTs to the target backend, guided by intent metadata.
+**Operation:** Lower the verified ASTs to the target backend, guided by contract metadata.
 
 **Targets:**
 - **Cranelift** — for fast debug builds and development iteration
@@ -308,7 +313,7 @@ Monel's code generation stage has access to the full intent layer — both the i
 - Deterministic resource cleanup insertion (drop glue)
 - Optimization passes (configurable via build profiles)
 
-**Intent-guided operations (unique to Monel):**
+**Contract-guided codegen operations:**
 
 - **`panics: never` elimination.** When Stage 3 has proven a function panic-free, codegen removes all panic infrastructure (unwinding tables, panic formatting, abort paths). The proof has already been done — codegen exploits it. This produces smaller, faster binaries for verified functions.
 
@@ -322,7 +327,7 @@ Monel's code generation stage has access to the full intent layer — both the i
 
 - **Contract-tagged debug info.** In addition to standard debug info (source locations, variable names), Monel emits contract-mapped debug info: which `ensures:` clause governs each code path, which effect is active at each point, and which `invariant:` applies. This enables contract-aware debugging (Section 1.7.1).
 
-**Output:** Target-specific object files or bytecode, plus intent-mapped debug metadata.
+**Output:** Target-specific object files or bytecode, plus contract-mapped debug metadata.
 
 ### Stage 4: Bundling
 
@@ -334,7 +339,7 @@ Monel's code generation stage has access to the full intent layer — both the i
 - Executable binaries
 - Static and dynamic libraries
 - WASM modules with JavaScript bindings
-- Container images (when deploy intent specifies containerization)
+- Container images (when project manifest specifies containerization)
 - **Parity manifest** — a signed, machine-readable record of all verification results embedded in the artifact:
 
 ```json
@@ -368,7 +373,7 @@ graph TD
     end
 
     subgraph "Monel Compiler Server"
-        M1["Source + Intent"]
+        M1["Source + Contracts"]
         M2["Live Semantic Model"]
         M3["Binary + Parity Manifest"]
 
@@ -401,9 +406,9 @@ monel query blast --fn authenticate --hypothetical "return_type: Result<Token, A
 
 The compiler evaluates the hypothetical against the live model and returns the impact — broken callers, parity violations, effect changes — in milliseconds. The agent uses this to plan changes before making them, reducing the edit-compile-fix cycle from minutes to a single query.
 
-**3. Intent-mapped diagnostics.**
+**3. Contract-mapped diagnostics.**
 
-When a runtime error occurs, Monel's debug info maps the crash site back to intent:
+When a runtime error occurs, Monel's debug info maps the crash site back to its contracts:
 
 ```
 PANIC at src/auth.mn:58 (fn authenticate)
@@ -418,7 +423,7 @@ PANIC at src/auth.mn:58 (fn authenticate)
     panics: never
 ```
 
-An AI debugger receives structured context: which intent was violated, which contract failed, and what the function was supposed to do.
+An AI debugger receives structured context: which contract was violated and what the function was supposed to guarantee.
 
 **4. Effect-aware hot-swap.**
 
@@ -435,7 +440,7 @@ The compiler generates swap stubs for safe functions and blocks on unsafe ones, 
 
 **5. Parity-preserving builds.**
 
-The parity manifest embedded in every artifact creates a chain of trust from intent through compilation to deployment:
+The verification manifest embedded in every artifact creates a chain of trust from source through compilation to deployment:
 
 ```
 Source (.mn) — contracts + implementation
@@ -625,9 +630,9 @@ src/auth/internal/* = { visibility = "auth" }
 **Primary artifact:** Layout and interaction declarations in `.mn` files.
 
 **Activities:**
-- Define layout intent: regions, proportions, focus order, responsive rules
-- Define interaction intent: state machines for UI flows, accessibility requirements
-- Define theme intent: color palettes, contrast requirements, spacing scales
+- Define layout declarations: regions, proportions, focus order, responsive rules
+- Define interaction declarations: state machines for UI flows, accessibility requirements
+- Define theme declarations: color palettes, contrast requirements, spacing scales
 - Review generated UI code through parity reports
 
 ### Security Engineer
@@ -646,7 +651,7 @@ src/auth/internal/* = { visibility = "auth" }
 **Primary artifact:** Effect policies, deploy configuration, operational constraints.
 
 **Activities:**
-- Define deploy intent: replicas, health checks, circuit breakers, resource limits
+- Define deploy configuration: replicas, health checks, circuit breakers, resource limits
 - Define SLA requirements as verifiable constraints
 - Define effects budgets for operational contexts
 - Review parity reports for operational correctness
@@ -664,7 +669,7 @@ Returns structured information about any symbol, module, or relationship in the 
 ```
 monel query "what effects does module auth use?"
 monel query "which functions have panics: never?"
-monel query "show the intent for fn authenticate"
+monel query "show the contracts for fn authenticate"
 ```
 
 ### `monel context`
@@ -676,21 +681,21 @@ monel context src/auth.mn --for-generation
 ```
 
 This produces a structured bundle containing:
-- The intent declarations to implement
-- All types referenced by the intent
+- The contracts to implement
+- All types referenced by the contracts
 - All imported modules' public APIs
 - Relevant policy constraints
 - Example implementations of similar functions in the project
 
 ### `monel refactor`
 
-Coordinates a multi-file refactoring operation through intent changes.
+Coordinates a multi-file refactoring operation.
 
 ```
 monel refactor --rename-type Session AuthSession
 ```
 
-This updates all intent files, then regenerates affected implementations, then verifies parity across all changes.
+This updates all affected files, then re-verifies contracts across all changes.
 
 ---
 
@@ -700,10 +705,10 @@ The following invariants hold for every valid Monel project:
 
 1. Every exported function has contracts or is explicitly marked contract-free.
 2. The compiler-inferred effects of every function are a subset of its declared effects.
-4. Every declared error variant is reachable in the implementation.
-5. No undeclared error variants are produced by the implementation.
+3. Every declared error variant is reachable in the implementation.
+4. No undeclared error variants are produced by the implementation.
 5. All `requires:` and `ensures:` contracts are verified by the SMT solver before code generation.
 6. All `panics: never` functions are proven panic-free.
-8. All refinement type assignments satisfy their predicates.
-9. The compiler produces identical output for identical input (deterministic compilation).
-10. The compiler produces correct output without any LLM (LLM is always optional).
+7. All refinement type assignments satisfy their predicates.
+8. The compiler produces identical output for identical input (deterministic compilation).
+9. The compiler produces correct output without any LLM (LLM is always optional).
