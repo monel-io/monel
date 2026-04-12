@@ -26,4 +26,6 @@
 
 # Project
 
+- [Claims Map](claims.md)
+- [Parser Plan](parser-plan.md)
 - [Progress & Roadmap](progress.md)

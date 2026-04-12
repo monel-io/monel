@@ -1,15 +1,15 @@
 # Monel — Progress & Roadmap
 
-Last updated: 2026-03-18
+Last updated: 2026-03-23
 
 ## What Exists
 
 ### Specification (v0.2)
 
-12 chapters + 4 worked examples. Rewritten from two-file intent/impl architecture to single-file contracts-alongside-code.
+12 chapters + 5 worked examples + claims map. Rewritten from two-file intent/impl architecture to single-file contracts-alongside-code.
 
 ```
-spec/01-overview.md        — Philosophy, architecture, 4-stage pipeline
+spec/01-overview.md        — Philosophy, architecture, 4-stage pipeline, competitive landscape
 spec/02-intent-syntax.md   — Contract syntax (requires:, ensures:, invariant:, effects:)
 spec/03-impl-syntax.md     — EBNF grammar for .mn files (contracts + implementation)
 spec/04-type-system.md     — Structural/nominal types, ownership, generics
@@ -21,7 +21,8 @@ spec/09-concurrency.md     — async/await, structured concurrency
 spec/10-systems.md         — unsafe, FFI, PTY, GPU
 spec/11-tooling.md         — Query oracle, monel context, dev server
 spec/12-stdlib.md          — All std/* modules with contract signatures
-spec/examples/             — stack, http_handler, terminal, web_server (single .mn files)
+spec/claims.md             — Claims map: all claims with evidence status + prior art (mermaid)
+spec/examples/             — hello, stack, http_handler, terminal, web_server
 ```
 
 Key architecture changes (v0.1 → v0.2):
@@ -39,7 +40,7 @@ Key architecture changes (v0.1 → v0.2):
 crates/
   monel-core/              — AST types + structural parity checker (working, 12 tests)
   monel-cli/               — Placeholder binary (prints version)
-  monel-intent-parser/     — Placeholder (parse() stub)
+  monel-parser/            — Placeholder (parse() stub)
   monel-bench/             — Benchmark: Monel vs Rust for AI agent efficiency
   xtask/                   — Build tasks (mdbook install/build/serve)
 ```
@@ -67,49 +68,33 @@ See [Benchmark Results](#benchmark-results) below for what's real vs hypothetica
 
 ---
 
+## Evidence Score: 8 proven / 26 total claims (31%)
+
+See [Claims Map](spec/claims.md) for the full diagram with prior art.
+
 ## What's Proven
 
-These claims have running code and passing tests behind them.
+Running code, passing tests.
 
 | Claim | Evidence |
 |-------|----------|
-| Parity checker catches undeclared effects | Test + benchmark scenario: adding Net.send without updating contracts |
-| Parity checker catches undeclared error variants | Test + benchmark scenario: adding RateLimited to AuthError |
+| Parity checker catches undeclared effects | Test + benchmark: adding Net.send without updating contracts |
+| Parity checker catches undeclared error variants | Test + benchmark: adding RateLimited to AuthError |
 | Parity checker catches missing implementations | Test: contract fn with no matching impl fn |
 | Parity checker catches orphan implementations | Test: impl fn with no contract declaration |
 | Parity checker catches return type mismatches | Test + benchmark: Option\<Session\> vs Result\<Session, AuthError\> |
 | Effect implication DAG works | Test: Db.write implies Db.read, Http.send implies Net.connect+Net.send |
 | Generic type matching with parameter mapping | Test: Vec\<T\> to Option\<T\> with consistent mapping |
 | Rust misses 4/5 of these bug classes | Benchmark 4: Rust compiler only catches type mismatches |
-| Contract files reduce AI agent tool calls ~2x | Real agent measurement: 29 tool calls (Rust) vs 15 (Monel) for same task |
+| Contracts reduce AI agent tool calls ~2x | Real measurement: 29 tool calls (Rust) vs 15 (Monel) for same task |
+
+**What this proves:** Monel's contract model catches real bug classes that Rust's type system misses, and AI agents navigate contract-annotated code more efficiently.
+
+**What this does NOT prove:** That `.mn` files can be parsed, that SMT verification works, or that the language can compile anything. All evidence so far uses hand-constructed ASTs.
 
 ## What's Hypothetical
 
-These are claimed in the spec or benchmark but have no code behind them.
-
-### High Risk (could kill the project if wrong)
-
-| Claim | Status | Why it's risky |
-|-------|--------|----------------|
-| `.mn` files (contracts + impl) can be parsed into ASTs | No parser exists. All ASTs are hand-constructed in tests. | If the grammar is ambiguous or the indentation-based syntax is unparseable, everything downstream breaks. The parity checker is proven but useless without parsed input. |
-| Lifetime inference with 3 elision rules + whole-program analysis | Spec only (§4.10.4), acknowledged as underspecified | Rust spent years on lifetime inference and still has explicit lifetimes. The spec's "Rule 4: whole-program analysis" is a wish, not a specification. |
-| SMT verification of `requires:`/`ensures:` clauses | Spec only (§6) | Z3 integration is well-understood engineering, but contract expressions need precise semantics. Bounded quantifiers and `old()` references add complexity. |
-
-### Medium Risk
-
-| Claim | Status | Why |
-|-------|--------|-----|
-| `monel query context` gives 86% token savings | Benchmark has a hardcoded simulated output string. No command exists. | Output format is straightforward once parser exists, but real savings depend on codebase size. The 86% number is from a tiny example. |
-| Effect-aware codegen (pure memoization, panics:never elimination) | Spec only (§1.7) | Optimization passes need the full pipeline (parser → type checker → codegen). |
-| Contract-driven property test generation | Spec only (§12.19.4) | Mechanically translating `requires:`/`ensures:` into property tests is well-defined, but generator quality matters. |
-| Verification coverage metric | Spec only (§6) | Tracking (proven ∪ tested) / total behavior requires defining "total behavior" precisely. |
-
-### Low Risk
-
-| Claim | Status | Why |
-|-------|--------|-----|
-| Policy-level forbidden effect combinations | No code | Straightforward rule check once effects are tracked. |
-| Effect budget instrumentation | No code | Compiler-inserted counters. Proven concept in other systems. |
+18 of 26 claims have no code behind them. Three are high risk (parser, lifetime inference, SMT verification). See [Claims Map](spec/claims.md) for the full breakdown with prior art and evidence status.
 
 ### Benchmark Honesty
 
@@ -127,72 +112,143 @@ These are claimed in the spec or benchmark but have no code behind them.
 
 ## Roadmap: Turning Hypotheticals Into Proof
 
-Ordered by risk reduction — each step makes the next one possible.
+Ordered by risk reduction. Each step makes the next one possible.
 
-### Step 1: Parser
+```
+Parser ──→ monel check ──→ Query Oracle ──→ Real Agent Benchmark
+  │             │                │                    │
+  │             │                └──→ Autoresearch Loop (optimize compiler for agents)
+  │             │
+  │             └──→ SMT Verification ──→ Contract-Driven Tests
+  │             │
+  │             └──→ KV Store, Shell (need effect checking)
+  │
+  └──→ JSON Parser (needs parsing only)
+```
 
-**Risk addressed:** Highest risk hypothetical — can we parse `.mn` files with interleaved contracts and implementation?
+### Step 1: Parser ← CRITICAL PATH
 
-Build a parser that takes `stack.mn` (real file on disk) and produces both contract AST and implementation AST from the same file. Then re-run the parity checker on parsed ASTs instead of hand-constructed ones.
+**Risk:** Highest. Can we parse `.mn` files with interleaved contracts and implementation?
 
-**Done when:** `cargo test` parses all 4 example `.mn` files and extracts contracts + implementation. Zero hand-constructed ASTs remain in tests.
+**What:** Build a parser that takes `stack.mn` (real file on disk) and produces ASTs. Re-run the parity checker on parsed ASTs instead of hand-constructed ones.
 
-**Unblocks:** Everything. Contract verification, query commands, real benchmarks.
+**Done when:** `cargo test` parses all 5 example `.mn` files and extracts contracts + implementation. Zero hand-constructed ASTs remain in tests.
 
-### Step 2: `monel check` CLI Command
+**Unblocks:** Everything. Without this, all 18 hypothetical claims stay hypothetical.
 
-**Risk addressed:** Is the contract verification pipeline usable as a real tool?
+**Evidence score after:** 8 → ~12 (proves F1, F3, and moves C5D from hypothetical to proven).
 
-Wire up: `monel check path/to/module.mn` parses the file, extracts contracts and implementation, runs structural checks (effects, error variants, signatures), prints errors with codes and locations.
+### Step 2: `monel check`
 
-**Done when:** Running `monel check spec/examples/stack.mn` on an intentionally broken file produces the correct verification errors.
+**Risk:** Is the contract verification pipeline usable as a real tool?
 
-**Unblocks:** Real developer workflow testing, `monel query context`.
+**What:** Wire up `monel check path/to/module.mn` — parse, extract contracts, run structural checks (effects, error variants, signatures), print errors with codes and locations.
 
-### Step 3: Compiler Query Oracle
+**Done when:** `monel check spec/examples/stack.mn` on an intentionally broken file produces the correct verification errors.
 
-**Risk addressed:** The 86% token savings claim and AI agent integration story.
+**Unblocks:** Real developer workflow testing, query oracle, SMT verification.
 
-Build `monel query context`, `monel query fn`, `monel query type`. Takes a symbol name, returns its contracts + implementation + dependency types + callers. Measure real token count against the Rust baseline.
+### Step 3: Query Oracle
 
-**Done when:** `monel query context fn authenticate --format json` returns structured output. Benchmark B1 uses this real output instead of the hardcoded string.
+**Risk:** The 86% token savings claim and AI agent integration story.
 
-**Unblocks:** Real AI agent benchmarks, integration with Claude Code via Bash tool calls.
+**What:** Build `monel query context`, `monel query fn`, `monel query type`. Measure real token count against Rust baseline.
+
+**Done when:** `monel query context fn authenticate --format json` returns structured output. Benchmark B1 uses real output instead of the hardcoded string.
+
+**Unblocks:** Real AI agent benchmark (Step 6).
 
 ### Step 4: SMT Contract Verification
 
-**Risk addressed:** Core differentiator — can the compiler prove contracts hold?
+**Risk:** Core differentiator — can the compiler prove contracts hold?
 
-Integrate Z3 (or similar SMT solver). Verify `requires:`/`ensures:` clauses against implementation. Start with arithmetic contracts on the stack example, then expand to the web server example.
+**What:** Integrate Z3. Verify `requires:`/`ensures:` clauses against implementation. Start with arithmetic contracts on the stack example.
 
-**Done when:** `monel check spec/examples/stack.mn` proves that `push` satisfies `ensures: ok => self.len == old(self.len) + 1` and that the type invariant `self.len <= self.capacity` is maintained.
+**Done when:** `monel check spec/examples/stack.mn` proves that `push` satisfies `ensures: ok => self.len == old(self.len) + 1` and that invariant `self.len <= self.capacity` is maintained.
 
-**Unblocks:** The "compiler proves what you specified" claim. Verification coverage metrics.
+**Unblocks:** The "compiler proves what you specified" claim. Verification coverage.
+
+**Evidence score after:** ~12 → ~16 (proves C1A, C1B, C1C, C1F).
 
 ### Step 5: Contract-Driven Test Generation
 
-**Risk addressed:** "Property tests find what you forgot to specify."
+**Risk:** "Property tests find what you forgot to specify."
 
-Implement `monel test --gen-contract-tests`. Mechanically generate property tests from `requires:`/`ensures:` clauses. Run with a property testing framework.
+**What:** Implement `monel test --gen-contract-tests`. Mechanically generate property tests from contracts.
 
-**Done when:** Running `monel test --gen-contract-tests spec/examples/stack.mn` produces tests equivalent to the hand-written `stack.mn.test` and all tests pass.
+**Done when:** Generated tests for `stack.mn` are equivalent to hand-written ones and all pass.
 
 **Unblocks:** Verification coverage metric, the full "proven or tested" story.
 
 ### Step 6: Real AI Agent Benchmark
 
-**Risk addressed:** Does Monel actually help AI agents in practice, or only in theory?
+**Risk:** Does Monel actually help AI agents in practice, or only in theory?
 
-Give Claude Code a task in both the Rust baseline and the Monel codebase (with `monel query context` available as a tool). Measure tool calls, tokens, correctness, and drift detection.
+**What:** A repeatable benchmark harness that gives Claude Code identical tasks in Rust and Monel, then measures everything.
 
-**Done when:** Benchmark runs with real agents, real tool calls, real token counts. No simulated numbers.
+**Metrics tracked per run:**
+
+| Metric | What it measures | Baseline (Rust, 2026-03-17) |
+|--------|-----------------|----------------------------|
+| Tool calls | Exploration effort | 29 |
+| Files read | Codebase surface touched | 9 |
+| Edit-check cycles | Tries before correct solution | not yet measured |
+| First-try correctness | Agent gets it right without compiler round-trip | not yet measured |
+| Bugs caught at compile | Mistakes caught before runtime | 1/5 (type mismatch only) |
+| Tokens consumed | Cost per task | 38,109 |
+| Wall clock time | End-to-end speed | 65s |
+
+**Benchmark tasks** (same task, both codebases):
+1. "Add rate limiting to authenticate" (existing — measured once)
+2. "Add a new error variant and handle it in all callers"
+3. "Refactor: extract a helper function from authenticate"
+4. "Add logging to all database writes" (effect-sensitive)
+
+**Harness:** Script that runs Claude Code in headless mode with a fixed prompt, captures the transcript, extracts metrics, appends to `benchmarks/results.jsonl`. Run after each language/tooling change to detect regressions.
+
+**Done when:** All 4 tasks run on both codebases, metrics extracted automatically, results tracked in version control.
+
+**Evidence score after:** ~16 → ~20 (proves C3A, C3B with real data, C3C, C3D).
+
+### Step 7: Validation Projects
+
+**Risk:** Do real programs expose grammar/type system/ownership problems that small examples hide?
+
+Write real programs in Monel — not toy examples, but programs complex enough to stress-test the language design. Each project targets a specific subsystem.
+
+| Project | What it stress-tests | Depends on |
+|---------|---------------------|------------|
+| **Key-value store** (Redis subset: GET/SET/DEL, TTL, persistence) | Effects (Db.write, Net.read), async, concurrency (shared state), error handling | Steps 1-2 |
+| **Shell** (pipes, process management, signals, job control) | Unsafe, FFI, ownership (fd lifetimes), state machines (job states) | Steps 1-2 |
+| **JSON parser** | Generics, algebraic types, pattern matching, complexity bounds, pure functions | Step 1 |
+
+**Timing:** Start the JSON parser after Step 1 (parser) — it only needs parsing, not verification. Start the kv-store and shell after Step 2 (`monel check`) — they need effect checking to be meaningful.
+
+**Done when:** All three compile (once codegen exists) and their contracts pass verification. Until then, they serve as parser test cases and language design stress-tests.
+
+### Step 8: Autoresearch Optimization Loop
+
+**Risk:** Can we systematically optimize Monel's compiler output for agent efficiency?
+
+**What:** Apply the [Autoresearch](https://github.com/karpathy/autoresearch) pattern — tight hypothesize → edit → eval → commit-or-revert loop — to iteratively improve how Monel's tooling serves AI agents. The agent modifies compiler output format, error messages, or query oracle responses, then runs `benchmarks/run.sh` as the eval metric, committing only changes that reduce tool calls or tokens.
+
+**Why this matters:** The Autoresearch blog showed that structured search with a clear eval metric finds wins an engineer wouldn't think to try (a temperature clamp fix worth more than all architecture changes combined). Our benchmark harness is already the eval; we just need to close the loop.
+
+**Concrete tasks:**
+1. Add an iterative benchmark task (e.g., "optimize this function to pass its contract while minimizing allocations") to test agent convergence rate with contracts vs plain comments
+2. Script the commit-or-revert loop around `benchmarks/run.sh` with tool_calls as the target metric
+3. Run against compiler output changes: error format, `--format llm` structure, `monel context` output shape
+
+**Depends on:** Steps 2-3 (`monel check` + query oracle must exist to optimize).
+
+**Done when:** At least one round of automated optimization produces a measurable improvement in agent efficiency metrics.
 
 ### Later (not blocking)
 
 - Effect-aware codegen passes
 - Compiler-as-server / persistent semantic model
 - `monel query blast --hypothetical`
-- Lifetime inference specification
+- Lifetime inference specification (high risk, but not blocking early adoption)
 - LLM-assisted test generation (`monel test --gen-llm-tests`)
 - Verification coverage reporting
 

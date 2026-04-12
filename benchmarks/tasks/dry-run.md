@@ -1,0 +1,1 @@
+Read the file spec/examples/stack.mn and describe what language features it demonstrates. Then read spec/examples/hello.mn and compare the two. Do not make any changes.

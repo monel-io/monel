@@ -1,8 +1,8 @@
-/// AST for `.mn` implementation files.
+/// AST for implementation bodies in `.mn` files.
 
 use crate::ast::{Effect, Param, Type, TypeParam};
 
-/// A complete implementation file.
+/// Implementation declarations extracted from a `.mn` file.
 #[derive(Debug, Clone)]
 pub struct ImplFile {
     pub module: Option<String>,

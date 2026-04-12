@@ -20,11 +20,11 @@ dependencies = [
 name = "monel-core"
 version = "0.1.0-dev"
 dependencies = [
- "monel-intent-parser",
+ "monel-parser",
 ]
 
 [[package]]
-name = "monel-intent-parser"
+name = "monel-parser"
 version = "0.1.0-dev"
 
 [[package]]

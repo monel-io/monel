@@ -1,75 +1,168 @@
 # Stack
 
-A generic, bounded stack data structure. Demonstrates type invariants, per-error-variant postconditions, and compact one-liner accessors.
+A generic, bounded stack data structure. Demonstrates type invariants, per-error-variant postconditions, compact one-liner accessors, trait definitions, trait implementations, inherent impl blocks, pub visibility, const declarations, and owned self.
 
 ```monel
-use std/collections {Array}
+# Stack — a generic, bounded stack data structure
+#
+# Language features exercised (not covered by other examples):
+#   - trait definitions (Iterable)
+#   - trait implementations (impl Display for Stack<T>, impl Iterable for Stack<T>)
+#   - inherent impl blocks (impl Stack<T>)
+#   - pub visibility on functions
+#   - const declarations
+#   - owned self (consuming the stack)
+#   - where clauses on trait bounds
+#   - associated types
+#   - default trait methods
 
-type Stack<T>
-  invariant: self.len <= self.capacity
+use std/collections {Array}
+use std/fmt {Display, Formatter, FmtError}
+
+# ─── Constants ───
+
+pub const DEFAULT_CAPACITY: Int = 16
+const MAX_CAPACITY: Int = 1_000_000
+
+# ─── Types ───
+
+pub type Stack<T>
+  invariant:
+    self.len >= 0
+    self.len <= self.capacity
+    self.capacity > 0
+    self.capacity <= MAX_CAPACITY
 
   data: Array<T>
   len: Int
   capacity: Int
 
-type StackError
+pub type StackError
   | Overflow
   | Underflow
+  | InvalidCapacity(Int)
 
-fn new(capacity: Int) -> Stack<T>
-  requires: capacity > 0
-  ensures:
-    result.len == 0
-    result.capacity == capacity
+# ─── Trait: something we can iterate over ───
 
-  Stack
-    data: Array.with_capacity(capacity)
-    len: 0
-    capacity: capacity
+pub trait Iterable
+  type Item
 
-fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
-  ensures:
-    ok => self.len == old(self.len) + 1
-    ok => self.peek() == Some(val)
-    err(Overflow) => self == old(self)
+  fn iter(self: Self) -> Iterator<Self.Item>
 
-  if self.len == self.capacity
-    Err(StackError.Overflow)
-  else
-    self.data.set(self.len, val)
-    self.len = self.len + 1
-    Ok(())
+  # default method — available to all implementors
+  fn count(self: Self) -> Int
+    let mut n = 0
+    for _ in self.iter()
+      n = n + 1
+    n
 
-fn pop(self: mut Stack<T>) -> Result<T, StackError>
-  ensures:
-    ok => self.len == old(self.len) - 1
-    err(Underflow) => self == old(self)
+# ─── Inherent impl ───
 
-  if self.len == 0
-    Err(StackError.Underflow)
-  else
-    self.len = self.len - 1
-    let val = self.data.get(self.len)
-    Ok(val)
+impl Stack<T>
+  pub fn new(capacity: Int) -> Result<Stack<T>, StackError>
+    requires: capacity > 0
+    requires: capacity <= MAX_CAPACITY
+    ensures:
+      ok => result.len == 0
+      ok => result.capacity == capacity
+      err(InvalidCapacity(_)) => capacity <= 0 or capacity > MAX_CAPACITY
+    panics: never
 
-fn peek(self: Stack<T>) -> Option<T>
-  ensures:
-    self.len > 0 => result == Some(self.top)
-    self.len == 0 => result == None
+    if capacity <= 0 or capacity > MAX_CAPACITY
+      return Err(StackError.InvalidCapacity(capacity))
+    Ok(Stack
+      data: Array.with_capacity(capacity)
+      len: 0
+      capacity: capacity)
 
-  if self.len == 0
-    None
-  else
-    Some(self.data.get(self.len - 1))
+  pub fn with_default_capacity() -> Result<Stack<T>, StackError>
+    panics: never
+    Stack.new(DEFAULT_CAPACITY)
 
-fn len(self: Stack<T>) -> Int = self.len
-fn is_empty(self: Stack<T>) -> Bool = self.len == 0
-fn is_full(self: Stack<T>) -> Bool = self.len == self.capacity
+  pub fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
+    ensures:
+      ok => self.len == old(self.len) + 1
+      ok => self.peek() == Some(val)
+      err(Overflow) => self == old(self)
+    panics: never
 
-fn clear(self: mut Stack<T>) -> Unit
-  ensures:
-    self.len == 0
-    self.capacity == old(self.capacity)
+    if self.len == self.capacity
+      Err(StackError.Overflow)
+    else
+      self.data.set(self.len, val)
+      self.len = self.len + 1
+      Ok(())
 
-  self.len = 0
+  pub fn pop(self: mut Stack<T>) -> Result<T, StackError>
+    ensures:
+      ok => self.len == old(self.len) - 1
+      err(Underflow) => self == old(self)
+    panics: never
+
+    if self.len == 0
+      Err(StackError.Underflow)
+    else
+      self.len = self.len - 1
+      Ok(self.data.get(self.len))
+
+  pub fn peek(self: Stack<T>) -> Option<T>
+    ensures:
+      self.len > 0 => result == Some(self.data.get(self.len - 1))
+      self.len == 0 => result == None
+    panics: never
+
+    if self.len == 0
+      None
+    else
+      Some(self.data.get(self.len - 1))
+
+  # ─── Compact one-liners ───
+
+  pub fn len(self: Stack<T>) -> Int = self.len
+  pub fn is_empty(self: Stack<T>) -> Bool = self.len == 0
+  pub fn is_full(self: Stack<T>) -> Bool = self.len == self.capacity
+  pub fn capacity(self: Stack<T>) -> Int = self.capacity
+
+  pub fn clear(self: mut Stack<T>)
+    ensures:
+      self.len == 0
+      self.capacity == old(self.capacity)
+
+    self.len = 0
+
+  # ─── Owned self — consuming conversion ───
+
+  pub fn into_vec(self: owned Stack<T>) -> Vec<T>
+    ensures: result.len == old(self.len)
+
+    let mut vec = Vec.with_capacity(self.len)
+    for i in 0..self.len
+      vec.push(self.data.get(i))
+    vec
+
+# ─── Trait implementations ───
+
+impl Display for Stack<T> where T: Display
+  fn fmt(self: Stack<T>, f: mut Formatter) -> Result<Unit, FmtError>
+    effects: [Io.write]
+
+    try f.write("Stack[")
+    for i in 0..self.len
+      if i > 0
+        try f.write(", ")
+      try f.write(self.data.get(i).to_string())
+    f.write("]")
+
+impl Iterable for Stack<T>
+  type Item = T
+
+  fn iter(self: Stack<T>) -> Iterator<T>
+    # iterate top-to-bottom (LIFO order)
+    let mut i = self.len
+    Iterator.from_fn(fn() -> Option<T>
+      if i == 0
+        None
+      else
+        i = i - 1
+        Some(self.data.get(i)))
 ```

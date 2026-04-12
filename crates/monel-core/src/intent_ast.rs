@@ -1,8 +1,8 @@
-/// AST for `.mn.intent` files.
+/// AST for contract declarations in `.mn` files.
 
 use crate::ast::{Effect, Param, Type, TypeParam};
 
-/// A complete intent file.
+/// Contract declarations extracted from a `.mn` file.
 #[derive(Debug, Clone)]
 pub struct IntentFile {
     pub module: String,

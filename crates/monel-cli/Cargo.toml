@@ -2,6 +2,9 @@
 name = "monel-cli"
 version = "0.1.0-dev"
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for the Monel programming language"
 
 [dependencies]
 monel-core = { path = "../monel-core" }

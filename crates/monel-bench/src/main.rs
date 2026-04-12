@@ -54,16 +54,14 @@ fn bench_token_efficiency() {
     let rust_total_tokens = rust_total_chars / 4; // ~4 chars per token approximation
     let rust_file_count = rust_files.len();
 
-    // Monel: `monel query context fn authenticate` returns exactly what the AI needs.
-    let monel_intent =
-        include_str!("../../../spec/examples/http_handler.mn.intent");
-    let monel_impl =
+    // Monel: single .mn file with contracts alongside implementation.
+    let monel_source =
         include_str!("../../../spec/examples/http_handler.mn");
 
-    // With `monel query context`, the AI only gets the relevant subset:
+    // `monel query context` (NOT YET IMPLEMENTED) would return a targeted subset:
     let monel_context_output = r#"# Context for: fn authenticate
-## Intent (http_handler.mn.intent)
-intent fn authenticate(creds: Credentials) -> Result<Session, AuthError> @strict
+## Contract (http_handler.mn)
+fn authenticate(creds: Credentials) -> Result<Session, AuthError> @strict
   requires:
     creds.username.len > 0
     creds.password.len > 0
@@ -90,10 +88,9 @@ Db.write: max_per_second = 1000
 fn handle_request — effects: [Db.read, Db.write, Log.write, Http.send]
 "#;
 
-    // Monel with full files (worst case — AI reads both files)
-    let monel_full_chars = monel_intent.len() + monel_impl.len();
-    let monel_full_lines: usize =
-        monel_intent.lines().count() + monel_impl.lines().count();
+    // Monel with full source file
+    let monel_full_chars = monel_source.len();
+    let monel_full_lines: usize = monel_source.lines().count();
     let monel_full_tokens = monel_full_chars / 4;
 
     // Monel with query context (best case — targeted output)
@@ -108,8 +105,8 @@ fn handle_request — effects: [Db.read, Db.write, Log.write, Http.send]
         rust_file_count, rust_total_lines, rust_total_tokens, "8 reads"
     );
     println!(
-        "  Monel (full files)   {:>5}  {:>5}  {:>7}  {:>10}",
-        2, monel_full_lines, monel_full_tokens, "2 reads"
+        "  Monel (full file)    {:>5}  {:>5}  {:>7}  {:>10}",
+        1, monel_full_lines, monel_full_tokens, "1 read"
     );
     println!(
         "  Monel (query ctx)    {:>5}  {:>5}  {:>7}  {:>10}",
@@ -120,12 +117,12 @@ fn handle_request — effects: [Db.read, Db.write, Log.write, Http.send]
     let savings_full = 100.0 * (1.0 - monel_full_tokens as f64 / rust_total_tokens as f64);
     let savings_ctx = 100.0 * (1.0 - monel_context_tokens as f64 / rust_total_tokens as f64);
 
-    println!("  Token savings (full files):   {savings_full:.0}%");
-    println!("  Token savings (query ctx):    {savings_ctx:.0}%");
+    println!("  Token savings (full file):    {savings_full:.0}%");
+    println!("  Token savings (query ctx):    {savings_ctx:.0}% [SIMULATED — command not yet implemented]");
     println!();
 
     // What the AI knows BEFORE reading any implementation code:
-    println!("  What Monel intent tells the AI before reading impl:");
+    println!("  What Monel contracts tell the AI before reading impl:");
     println!("    + Exact function signature with types");
     println!("    + Preconditions (username/password non-empty)");
     println!("    + Postconditions (user_id > 0, session not expired)");
@@ -191,13 +188,10 @@ fn bench_drift_detection() {
     println!("  In Monel, parity checking blocks the build until intent is updated.");
     println!();
 
-    println!("  Additional silent failures in Rust that Monel catches:");
-    println!("    - Adding Crypto.decrypt + Net.send = data exfiltration pattern");
-    println!("      Monel: forbidden effect combination (policy violation)");
-    println!("      Rust: compiles fine");
+    println!("  Additional silent failures in Rust that Monel would catch:");
     println!();
     println!("    - Removing the `Expired` error path but keeping the variant");
-    println!("      Monel: parity error -- intent declares Expired but impl never returns it");
+    println!("      Monel: parity error — contract declares Expired but impl never returns it");
     println!("      Rust: dead code warning at best (often suppressed)");
     println!();
 }
@@ -206,7 +200,7 @@ fn bench_drift_detection() {
 
 fn bench_spec_density() {
     println!("───────────────────────────────────────────────────────────────");
-    println!("  Benchmark 3: Specification Density");
+    println!("  Benchmark 3: Specification Density [HAND-COUNTED]");
     println!("  (How much meaning per line?)");
     println!("───────────────────────────────────────────────────────────────");
     println!();

@@ -3,7 +3,7 @@
 Every claim that supports Monel's value proposition, with evidence status and prior art.
 
 ```mermaid
-graph TD
+graph LR
     classDef proven fill:#2d6a2d,stroke:#1a4a1a,color:#fff
     classDef partial fill:#8a6d1b,stroke:#5a4512,color:#fff
     classDef hypo fill:#8a1b1b,stroke:#5a1212,color:#fff
@@ -119,6 +119,16 @@ graph TD
 | 🔴 Red | **Hypothetical** — spec only, no code | 18 |
 | 🔵 Blue | **Prior art** — another system does this | 6 |
 | 🟣 Purple | **Value prop / pillar** — structural | 7 |
+
+## High-Risk Hypotheticals
+
+These three could kill the project if wrong:
+
+| Claim | Risk |
+|-------|------|
+| **F1: Parser** — `.mn` files can be parsed into ASTs | No parser exists. All ASTs are hand-constructed in tests. If the grammar is ambiguous or indentation-based syntax is unparseable, everything downstream breaks. |
+| **F2: Lifetime inference** — 3 elision rules + whole-program analysis | Rust spent years on lifetime inference and still has explicit lifetimes. The spec's "Rule 4: whole-program analysis" is a wish, not a specification. |
+| **C1A: SMT verification** — `requires:`/`ensures:` verified by Z3 | Z3 integration is well-understood engineering, but contract expressions need precise semantics. Bounded quantifiers and `old()` references add complexity. |
 
 ## Key Takeaway
 

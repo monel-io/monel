@@ -1,12 +1,12 @@
 # Monel Language Specification
 
-**Version:** 0.1.0-draft
+**Version:** 0.2.0-draft
 
-Monel is a programming language with a compiler that enforces human intent. Every function declares its contracts (`requires:`, `ensures:`), effects, and error behavior inline alongside its implementation. The compiler verifies all contracts deterministically — no LLM in the pipeline. See [how verification works](06-parity.md).
+Functions in Monel declare contracts (`requires:`, `ensures:`, `effects:`, `panics:`) alongside their implementation in `.mn` files. The compiler verifies all contracts deterministically. See [how verification works](06-parity.md).
 
-- **Contracts** — `requires:`, `ensures:`, `invariant:`, `effects:`, `panics: never`
-- **Implementation** — algorithms, data structures, control flow
-- **Both live in `.mn` files** — contracts and code are co-located, verified by the compiler
+- **Contracts**: `requires:`, `ensures:`, `invariant:`, `effects:`, `panics: never`
+- **Implementation**: algorithms, data structures, control flow
+- **Single file**: contracts and code are co-located in `.mn` files
 
 ## Chapters
 

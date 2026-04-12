@@ -2,6 +2,9 @@
 name = "monel-core"
 version = "0.1.0-dev"
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core AST types and parity checker for Monel"
 
 [dependencies]
-monel-intent-parser = { path = "../monel-intent-parser" }
+monel-parser = { path = "../monel-parser" }

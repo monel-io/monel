@@ -1,7 +1,7 @@
 [package]
-name = "xtask"
+name = "monel-parser"
 version = "0.1.0-dev"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Build tasks for the Monel project"
+description = "Parser for .mn source files"
