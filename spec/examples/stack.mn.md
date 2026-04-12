@@ -3,7 +3,7 @@
 A generic, bounded stack data structure. Demonstrates type invariants, per-error-variant postconditions, compact one-liner accessors, trait definitions, trait implementations, inherent impl blocks, pub visibility, const declarations, and owned self.
 
 ```monel
-# Stack — a generic, bounded stack data structure
+# Stack: a generic, bounded stack data structure
 #
 # Language features exercised (not covered by other examples):
 #   - trait definitions (Iterable)
@@ -49,7 +49,7 @@ pub trait Iterable
 
   fn iter(self: Self) -> Iterator<Self.Item>
 
-  # default method — available to all implementors
+  # default method, available to all implementors
   fn count(self: Self) -> Int
     let mut n = 0
     for _ in self.iter()
@@ -130,7 +130,7 @@ impl Stack<T>
 
     self.len = 0
 
-  # ─── Owned self — consuming conversion ───
+  # ─── Owned self: consuming conversion ───
 
   pub fn into_vec(self: owned Stack<T>) -> Vec<T>
     ensures: result.len == old(self.len)

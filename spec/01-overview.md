@@ -39,7 +39,7 @@ As AI agents take on more code generation, review becomes a larger part of the d
 
 1. **Rubber-stamping.** Code that is syntactically valid and passes tests may be approved without deep understanding. Defects can accumulate silently.
 
-2. **Tracing burden.** Reviewers may need to reverse-engineer intent from code — reading hundreds of lines to answer "does this do what I wanted?" This scales poorly.
+2. **Tracing burden.** Reviewers may need to reverse-engineer intent from code, reading hundreds of lines to answer "does this do what I wanted?" This scales poorly.
 
 3. **Specification drift.** When intent lives only in natural language (comments, tickets, chat messages), there is no mechanism to detect divergence between specification and implementation.
 
@@ -51,7 +51,7 @@ These problems share a root cause: mainstream languages conflate *what the progr
 
 ## 1.4 The Core Insight
 
-Every function in Monel declares **contracts** alongside its **implementation**, and the compiler verifies the relationship between them — deterministically, with no LLM in the pipeline.
+Every function in Monel declares **contracts** alongside its **implementation**, and the compiler verifies the relationship between them. Verification is deterministic, with no LLM in the pipeline.
 
 ```mermaid
 graph LR
@@ -73,7 +73,7 @@ graph LR
 
 - **Implementation** is how the function does it: algorithms, data structures, control flow. Contracts and code live in the same `.mn` file, co-located for readability.
 
-- **Verification** — the compiler checks that implementation satisfies its contracts. Effect inference verifies declared effects. SMT solving (Z3) proves `requires:`/`ensures:` clauses. Type checking and borrow checking enforce safety. All verification is deterministic and reproducible.
+- **Verification**: the compiler checks that implementation satisfies its contracts. Effect inference verifies declared effects. SMT solving (Z3) proves `requires:`/`ensures:` clauses. Type checking and borrow checking enforce safety. All verification is deterministic and reproducible.
 
 A function whose implementation violates its contracts is a compilation error. A declared effect not present in the code is a warning. An undeclared effect in the code is an error. All of this happens at compile time with no external dependencies.
 
@@ -81,7 +81,7 @@ Because the compiler verifies contracts, reviewers can focus on the contracts ra
 
 ### 1.4.1 Competitive Landscape and Positioning
 
-The problem Monel addresses — verifying that code does what a specification says — is approached from several directions today.
+The problem Monel addresses (verifying that code does what a specification says) is approached from several directions today.
 
 #### Spec-Driven Development Tools (OpenSpec, GitHub Spec Kit, Kiro, Tessl)
 
@@ -91,21 +91,21 @@ The SDD movement has produced 30+ tools with over 100k combined GitHub stars. Op
 
 **What they do not do:** Verify that the resulting code matches the specification. Martin Fowler's team confirmed this directly: agents frequently ignored instructions and created duplicates despite elaborate spec documentation. The Fowler analysis identified a risk of "false sense of control" despite elaborate workflows.
 
-These tools validate the demand — developers want spec-first AI workflows — but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. No tool in the SDD stack detects this divergence.
+These tools validate the demand (developers want spec-first AI workflows) but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. No tool in the SDD stack detects this divergence.
 
 #### Design-by-Contract Libraries (deal, icontract, Rust `contracts`, Prusti)
 
 Languages like Python and Rust have libraries that add preconditions, postconditions, and invariants to functions. Python's `deal` (875 stars) includes a static linter. Python's `icontract` integrates with CrossHair for SMT-based symbolic verification. Rust's `contracts` crate (29 stars) provides `#[requires]`/`#[ensures]` macros. Prusti (1.6k stars) verifies Rust code against pre/postconditions via SMT, including `old()` references and panic freedom proofs.
 
-Rust is adding official contract support (MCP-759) to annotate unsafe stdlib functions — but only for `unsafe` code, not general specification enforcement.
+Rust is adding official contract support (MCP-759) to annotate unsafe stdlib functions, but only for `unsafe` code, not general specification enforcement.
 
 **What they do:** Add pre/postconditions to existing languages. Range from runtime assertions (deal, contracts crate) to full SMT verification (Prusti, icontract+CrossHair).
 
-**What they do not do:** Track side effects or provide an integrated effect system. Contract annotations are bolted onto an existing language's syntax — they work within the host language's type system and toolchain rather than co-designing both together.
+**What they do not do:** Track side effects or provide an integrated effect system. Contract annotations are bolted onto an existing language's syntax. They work within the host language's type system and toolchain rather than co-designing both together.
 
 #### Formal Verification Languages and Tools (SPARK Ada, Dafny, Verus)
 
-SPARK Ada is the most established production formal verification system, used in avionics, rail, and defense since 2014. It proves absence of runtime errors, verifies pre/postconditions via SMT (Z3/CVC5), supports `old()` references in postconditions, and since SPARK 2024 provides per-exception postconditions via `Exceptional_Cases`. SPARK is not a separate language — it is a formally verifiable subset of Ada with an industrial-grade toolchain (GNAT/GNATprove).
+SPARK Ada is the most established production formal verification system, used in avionics, rail, and defense since 2014. It proves absence of runtime errors, verifies pre/postconditions via SMT (Z3/CVC5), supports `old()` references in postconditions, and since SPARK 2024 provides per-exception postconditions via `Exceptional_Cases`. SPARK is not a separate language. It is a formally verifiable subset of Ada with an industrial-grade toolchain (GNAT/GNATprove).
 
 Dafny (3.3k stars, Microsoft Research) and Verus (2.4k stars) provide SMT-based static verification. Verus works on a subset of Rust. Dafny compiles to C#, Go, Python, Java. Both use Z3 for proof.
 
@@ -152,7 +152,7 @@ quadrantChart
     Monel: [0.5, 0.7]
 ```
 
-The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Prusti occupies the middle — strong verification on existing Rust, but no effect tracking and limited to Rust's syntax. Monel targets a similar depth with lower annotation burden by co-designing the language and verification system together, and adds a first-class effect system that no existing tool provides.
+The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Prusti occupies the middle: strong verification on existing Rust, but no effect tracking and limited to Rust's syntax. Monel targets a similar depth with lower annotation burden by co-designing the language and verification system together, and adds a first-class effect system that no existing tool provides.
 
 #### Why a Language, Not a Tool
 
@@ -162,9 +162,9 @@ Three capabilities suggest a language rather than a tool:
 
 2. **Spec-implementation correspondence needs compilation constraints.** A linter can check annotations, but enforcing that every public function has a matching specification, that signatures agree, and that declared effects cover actual effects requires compiler-level enforcement.
 
-3. **Inline contracts are a syntax decision.** `requires:`/`ensures:` with SMT verification, `effects:` with inference checking, `panics: never` with static proof — these need to be part of the function declaration syntax, not bolted on as annotations.
+3. **Inline contracts are a syntax decision.** `requires:`/`ensures:` with SMT verification, `effects:` with inference checking, `panics: never` with static proof. These need to be part of the function declaration syntax, not bolted on as annotations.
 
-The closest related projects are SPARK Ada (production formal verification with per-exception postconditions), Prusti (SMT verification for Rust with `old()` and panic freedom), and Verus (proof-oriented Rust subset). These verify properties of existing language code. Monel's bet is that co-designing the language, contract system, and effect system together — rather than bolting verification onto an existing language — produces lower annotation burden and enables optimizations (effect-aware codegen, contract-driven test generation) that external tools cannot perform.
+The closest related projects are SPARK Ada (production formal verification with per-exception postconditions), Prusti (SMT verification for Rust with `old()` and panic freedom), and Verus (proof-oriented Rust subset). These verify properties of existing language code. Monel's bet is that co-designing the language, contract system, and effect system together, rather than bolting verification onto an existing language, produces lower annotation burden and enables optimizations (effect-aware codegen, contract-driven test generation) that external tools cannot perform.
 
 #### Comparison Table
 
@@ -194,9 +194,9 @@ Monel compiles to native code via LLVM, to WebAssembly, and (in future) to other
 
 The language will be validated by building three substantial applications:
 
-1. **Terminal emulator** — a replacement for kitty, exercising GPU rendering, PTY management, and low-level system interaction.
-2. **Terminal multiplexer** — a replacement for zellij, exercising layout management, IPC, plugin systems, and session persistence.
-3. **Text editor** — a replacement for vim, exercising modal input handling, buffer management, syntax highlighting, and extensibility.
+1. **Terminal emulator**: a replacement for kitty, exercising GPU rendering, PTY management, and low-level system interaction.
+2. **Terminal multiplexer**: a replacement for zellij, exercising layout management, IPC, plugin systems, and session persistence.
+3. **Text editor**: a replacement for vim, exercising modal input handling, buffer management, syntax highlighting, and extensibility.
 
 These projects are chosen because they demand systems-level performance, have rich UI requirements, and are complex enough to stress-test the contract/verification system at scale.
 
@@ -215,7 +215,7 @@ Monel has two layers: **source** and **compiler**. Contracts and implementation 
 - State machine declarations, layout specifications
 - `unsafe` blocks, `async`/`await`, error propagation via `try`
 
-**Syntax:** Indentation-based, expression-oriented, one canonical form per construct. Contracts appear between the function signature and the body — the grammar distinguishes them without a separator. See Chapter 2 (Contract Syntax) and Chapter 3 (Implementation Syntax).
+**Syntax:** Indentation-based, expression-oriented, one canonical form per construct. Contracts appear between the function signature and the body. The grammar distinguishes them without a separator. See Chapter 2 (Contract Syntax) and Chapter 3 (Implementation Syntax).
 
 **Compact form** for trivial functions: `fn len(self: Stack<T>) -> Int = self.len`
 
@@ -304,9 +304,9 @@ Monel's code generation stage has access to verified contracts alongside impleme
 **Operation:** Lower the verified ASTs to the target backend, guided by contract metadata.
 
 **Targets:**
-- **Cranelift** — for fast debug builds and development iteration
-- **LLVM IR** — for optimized release builds on all LLVM-supported architectures
-- **WASM** — for browser and edge deployment
+- **Cranelift**: for fast debug builds and development iteration
+- **LLVM IR**: for optimized release builds on all LLVM-supported architectures
+- **WASM**: for browser and edge deployment
 
 **Standard operations:**
 - Monomorphization of generic functions
@@ -315,7 +315,7 @@ Monel's code generation stage has access to verified contracts alongside impleme
 
 **Contract-guided codegen operations:**
 
-- **`panics: never` elimination.** When Stage 3 has proven a function panic-free, codegen removes all panic infrastructure (unwinding tables, panic formatting, abort paths). The proof has already been done — codegen exploits it. This produces smaller, faster binaries for verified functions.
+- **`panics: never` elimination.** When Stage 3 has proven a function panic-free, codegen removes all panic infrastructure (unwinding tables, panic formatting, abort paths). The proof has already been done; codegen exploits it. This produces smaller, faster binaries for verified functions.
 
 - **`complexity:` bound enforcement.** When a function declares `complexity: O(n)`, the optimizer rejects transformations that would violate the bound (e.g., an optimization that introduces an inner loop). The complexity contract constrains the optimizer, not just the programmer.
 
@@ -340,7 +340,7 @@ Monel's code generation stage has access to verified contracts alongside impleme
 - Static and dynamic libraries
 - WASM modules with JavaScript bindings
 - Container images (when project manifest specifies containerization)
-- **Parity manifest** — a signed, machine-readable record of all verification results embedded in the artifact:
+- **Parity manifest**: a signed, machine-readable record of all verification results embedded in the artifact:
 
 ```json
 {
@@ -392,7 +392,7 @@ graph TD
 
 **1. The compiler maintains a live semantic model.**
 
-After initial compilation, the compiler keeps the full AST, type information, effect analysis, parity map, and dependency graph in memory. Queries (`monel query`, `monel context`) read from this model without recompilation. Edits trigger incremental updates — only the affected portion of the model is recomputed.
+After initial compilation, the compiler keeps the full AST, type information, effect analysis, parity map, and dependency graph in memory. Queries (`monel query`, `monel context`) read from this model without recompilation. Edits trigger incremental updates: only the affected portion of the model is recomputed.
 
 The compiler and the query server are the same process, sharing the same data structures.
 
@@ -404,7 +404,7 @@ An AI agent can ask "what would happen if I changed this?" without actually maki
 monel query blast --fn authenticate --hypothetical "return_type: Result<Token, AuthError>"
 ```
 
-The compiler evaluates the hypothetical against the live model and returns the impact — broken callers, parity violations, effect changes — in milliseconds. The agent uses this to plan changes before making them, reducing the edit-compile-fix cycle from minutes to a single query.
+The compiler evaluates the hypothetical against the live model and returns the impact (broken callers, parity violations, effect changes) in milliseconds. The agent uses this to plan changes before making them, reducing the edit-compile-fix cycle from minutes to a single query.
 
 **3. Contract-mapped diagnostics.**
 
@@ -431,10 +431,10 @@ During development (`monel dev`), the compiler uses effect information to determ
 
 | Effect | Hot-swap safety |
 |--------|----------------|
-| `pure` | Always safe — no state, no side effects |
+| `pure` | Always safe: no state, no side effects |
 | `Db.read` | Safe if no cursor/connection is mid-transaction |
 | `Fs.write` | Safe if no file handle is open in the function |
-| `unsafe` | **Never auto-swapped** — requires explicit confirmation |
+| `unsafe` | **Never auto-swapped**, requires explicit confirmation |
 
 The compiler generates swap stubs for safe functions and blocks on unsafe ones, using the effect system as a static safety classifier.
 
@@ -443,7 +443,7 @@ The compiler generates swap stubs for safe functions and blocks on unsafe ones, 
 The verification manifest embedded in every artifact creates a chain of trust from source through compilation to deployment:
 
 ```
-Source (.mn) — contracts + implementation
+Source (.mn) -- contracts + implementation
   ↓  [Stage 2: types, effects, contracts verified via SMT]
 Binary (with embedded verification manifest)
   ↓  [manifest: all checks passed, signed]
@@ -474,12 +474,12 @@ Every construct in Monel has exactly one syntactic representation. There is no s
 
 Scope is defined by indentation, using exactly 2 spaces per level. There are no braces, no `end` keywords, no `begin`/`end` blocks.
 
-**Rationale:** Indentation-based scope removes formatting choices and reduces visual noise. The 2-space indent is chosen for density — systems code tends to be deeply nested, and 4-space indents consume too much horizontal space.
+**Rationale:** Indentation-based scope removes formatting choices and reduces visual noise. The 2-space indent is chosen for density. Systems code tends to be deeply nested, and 4-space indents consume too much horizontal space.
 
 **Rules:**
 - Tabs are a syntax error
 - Mixed indentation is a syntax error
-- The formatter (`monel fmt`) is authoritative — it produces the one canonical indentation
+- The formatter (`monel fmt`) is authoritative: it produces the one canonical indentation
 - Blank lines within a block do not reset indentation
 - Continuation lines are indented one additional level beyond the opening line
 
@@ -487,7 +487,7 @@ Scope is defined by indentation, using exactly 2 spaces per level. There are no 
 
 Type annotations are required on all function signatures (parameters and return types). Within function bodies, types are inferred. Programmers may add optional type annotations within bodies for documentation.
 
-**Rationale:** Signatures are the contract boundary — they must be explicit for both human readers and the parity compiler. Bodies are implementation detail — inference reduces noise without sacrificing safety.
+**Rationale:** Signatures are the contract boundary. They must be explicit for both human readers and the parity compiler. Bodies are implementation detail, and inference reduces noise without sacrificing safety.
 
 ### 1.8.4 Edit-Friendly Syntax
 
@@ -495,7 +495,7 @@ The syntax is designed for programmatic editing by LLMs and tools. Specific rule
 
 - **Function signatures on one line.** A function signature is always a single line, making it a unique anchor for search and replacement. If a signature is too long for one line, the language provides a multi-line parameter block (indented under the `params:` keyword), but the `fn name` declaration is always on its own line.
 
-- **No wildcard imports.** `use http/server {Config, serve}` — never `use http/server *`. Every imported name is explicit, making dependency analysis trivial.
+- **No wildcard imports.** `use http/server {Config, serve}`, never `use http/server *`. Every imported name is explicit, making dependency analysis trivial.
 
 - **Each `let` binding on its own line.** No multiple bindings per line. No destructuring into multiple variables on one line (destructuring uses a `let` per variable or a `match`).
 
@@ -536,7 +536,7 @@ fn authenticate(creds: Credentials) -> Result<Session, AuthError>
   panics: never
 ```
 
-The contracts specify *what* without specifying *how*. An AI agent can generate these from a natural-language description — the English never enters the compiler.
+The contracts specify *what* without specifying *how*. An AI agent can generate these from a natural-language description. The English never enters the compiler.
 
 ### Step 2: Write Implementation
 
@@ -572,7 +572,7 @@ No LLM. No network. Deterministic and reproducible.
 
 ### Step 4: Review Contracts
 
-The reviewer reads contracts, not implementation. If `ensures: ok => result.user_id > 0` and the compiler says "verified," the reviewer knows the implementation returns a valid user ID on success — without reading the code that does it.
+The reviewer reads contracts, not implementation. If `ensures: ok => result.user_id > 0` and the compiler says "verified," the reviewer knows the implementation returns a valid user ID on success, without reading the code that does it.
 
 ---
 
@@ -591,7 +591,7 @@ Monel's three-layer architecture enables different team roles to interact with t
 
 ### Engineer
 
-**Primary artifact:** `.mn` — implementation files.
+**Primary artifact:** `.mn`, implementation files.
 
 **Activities:**
 - Review LLM-generated implementation for correctness
@@ -602,7 +602,7 @@ Monel's three-layer architecture enables different team roles to interact with t
 
 ### Architect
 
-**Primary artifact:** `monel.policy`, `monel.team` — project-wide policy and team configuration.
+**Primary artifact:** `monel.policy`, `monel.team`, project-wide policy and team configuration.
 
 **Activities:**
 - Define effect budgets (which modules may use which effects)
@@ -674,7 +674,7 @@ monel query "show the contracts for fn authenticate"
 
 ### `monel context`
 
-Generates a context bundle for an LLM — all the information needed to generate or modify a specific piece of code.
+Generates a context bundle for an LLM, containing all the information needed to generate or modify a specific piece of code.
 
 ```
 monel context src/auth.mn --for-generation

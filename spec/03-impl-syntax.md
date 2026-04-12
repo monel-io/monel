@@ -9,7 +9,7 @@
 
 ## 3.1 Purpose of This Chapter
 
-This chapter defines the complete syntax and semantics of Monel implementation files (`.mn`). Implementation files contain the executable logic of a Monel program — the algorithms, data structures, control flow, and inline contracts that the compiler verifies. This chapter specifies the full EBNF grammar for `.mn` files.
+This chapter defines the complete syntax and semantics of Monel implementation files (`.mn`). Implementation files contain the executable logic of a Monel program: the algorithms, data structures, control flow, and inline contracts that the compiler verifies. This chapter specifies the full EBNF grammar for `.mn` files.
 
 ---
 
@@ -22,7 +22,7 @@ Monel uses a hybrid syntax that combines indentation-based structure with minima
 - **Indentation defines scope.** Blocks are delimited by increased indentation (2 spaces per level), similar to Python. There are no braces and no `end` keywords.
 - **`|` for pattern match arms.** Pattern matching uses the pipe character, following the ML family tradition. Each arm is written `| PATTERN => EXPR`.
 - **Dot notation for field access and method calls.** `object.field` and `object.method(args)`.
-- **Parentheses only for function calls.** `f(x, y)` — never for grouping in expressions (use explicit `let` bindings to break up complex expressions).
+- **Parentheses only for function calls.** `f(x, y)`, never for grouping in expressions (use explicit `let` bindings to break up complex expressions).
 - **Arrow `=>` for match arm bodies.** Each pattern match arm uses `=>` to separate the pattern from its body.
 
 ### 3.2.2 Small Keyword Set
@@ -63,13 +63,13 @@ Every construct in Monel is an expression that produces a value. There are no st
 
 There is exactly one way to express each construct. No syntactic sugar exists. No alternative spellings or shorthand forms are provided. This means:
 
-- No `unless` — use `if not`
-- No ternary operator — use `if`/`else`
-- No implicit returns — the last expression in a block is its value (this is the only form)
+- No `unless`: use `if not`
+- No ternary operator: use `if`/`else`
+- No implicit returns: the last expression in a block is its value (this is the only form)
 - No operator overloading beyond trait-defined operators
-- String interpolation via `"{expr}"` syntax — expressions inside braces within double-quoted strings are evaluated and converted to strings via the `Display` trait
-- No list comprehensions — use `iter().map().collect()`
-- No `do` notation — use explicit `let` bindings with `try`
+- String interpolation via `"{expr}"` syntax: expressions inside braces within double-quoted strings are evaluated and converted to strings via the `Display` trait
+- No list comprehensions: use `iter().map().collect()`
+- No `do` notation: use explicit `let` bindings with `try`
 
 ### 3.2.5 Type Inference Within Functions
 
@@ -105,7 +105,7 @@ use std/collections {Map}
 
 Never:
 ```
-use http/server *       (* INVALID — wildcard imports are a syntax error *)
+use http/server *       (* INVALID -- wildcard imports are a syntax error *)
 ```
 
 This makes dependency analysis trivial: search for the name in `use` declarations.
@@ -119,13 +119,13 @@ let y = compute_y()
 
 Never:
 ```
-let x = compute_x(); let y = compute_y()    (* INVALID — no semicolons *)
+let x = compute_x(); let y = compute_y()    (* INVALID -- no semicolons *)
 ```
 
 ### 3.3.4 No Significant Trailing Commas
 
 - Single-line lists use commas: `[a, b, c]`
-- Multi-line lists use newlines as separators — no trailing comma required or allowed
+- Multi-line lists use newlines as separators (no trailing comma required or allowed)
 - The formatter (`monel fmt`) determines whether a list is single-line or multi-line based on line length thresholds
 
 ### 3.3.5 Binary Operators Stay on the Same Line
@@ -141,7 +141,7 @@ let total = base_price +
 Never:
 ```
 let total = base_price
-  + tax             (* INVALID — operator must be on left operand's line *)
+  + tax             (* INVALID -- operator must be on left operand's line *)
   + shipping
 ```
 
@@ -152,7 +152,7 @@ let total = base_price
 An implementation file has the extension `.mn`. Its path within the project determines the module it belongs to. The file `src/auth/session.mn` defines the module `auth/session`.
 
 A `.mn` file consists of:
-1. An optional `module` declaration (if the module name differs from the file path — rare)
+1. An optional `module` declaration (if the module name differs from the file path, which is rare)
 2. Zero or more `use` declarations
 3. Zero or more top-level declarations (functions, types, traits, implementations, constants)
 
@@ -207,9 +207,9 @@ fn name(param: Type, param: Type) -> ReturnType
   body_expr
 ```
 
-- `fn NAME(PARAMS) -> TYPE` — the function signature. Always on its own line. Parameters are comma-separated within parentheses. The return type follows `->`.
-- **Contract clauses** — zero or more of `requires:`, `ensures:`, `effects:`, `panics:`, `doc:`. These appear between the signature and the body, each on its own indented line.
-- **Body** — an indented block of expressions. The value of the last expression is the return value. No `body:` keyword is required; the body begins at the first indented line that is not a contract clause.
+- `fn NAME(PARAMS) -> TYPE`: the function signature. Always on its own line. Parameters are comma-separated within parentheses. The return type follows `->`.
+- **Contract clauses**: zero or more of `requires:`, `ensures:`, `effects:`, `panics:`, `doc:`. These appear between the signature and the body, each on its own indented line.
+- **Body**: an indented block of expressions. The value of the last expression is the return value. No `body:` keyword is required; the body begins at the first indented line that is not a contract clause.
 
 **Example:**
 
@@ -343,9 +343,9 @@ fn push(self: mut Stack<T>, val: T) -> Result<(), StackError>
 ```
 
 Self parameter forms:
-- `self: TYPE` — immutable borrow
-- `self: mut TYPE` — mutable borrow
-- `self: owned TYPE` — takes ownership
+- `self: TYPE`: immutable borrow
+- `self: mut TYPE`: mutable borrow
+- `self: owned TYPE`: takes ownership
 
 ### 3.6.5 Generic Functions
 
@@ -434,16 +434,16 @@ match EXPR
 A `match` expression evaluates the scrutinee expression and compares it against patterns in order. The first matching pattern's body is evaluated and becomes the value of the `match` expression.
 
 **Pattern forms:**
-- `IDENT` — variable binding (matches anything, binds the value)
-- `_` — wildcard (matches anything, discards the value)
-- `LITERAL` — literal match (integer, string, boolean)
-- `CONSTRUCTOR(PATTERNS)` — constructor pattern with sub-patterns
-- `CONSTRUCTOR` — nullary constructor
-- `(P1, P2, ...)` — tuple pattern
-- `IDENT if EXPR` — guarded pattern
+- `IDENT`: variable binding (matches anything, binds the value)
+- `_`: wildcard (matches anything, discards the value)
+- `LITERAL`: literal match (integer, string, boolean)
+- `CONSTRUCTOR(PATTERNS)`: constructor pattern with sub-patterns
+- `CONSTRUCTOR`: nullary constructor
+- `(P1, P2, ...)`: tuple pattern
+- `IDENT if EXPR`: guarded pattern
 
 **Rules:**
-- Match must be exhaustive — the compiler verifies that all possible values of the scrutinee type are covered
+- Match must be exhaustive. The compiler verifies that all possible values of the scrutinee type are covered.
 - Each arm is on its own line, prefixed with `|`
 - Multi-line arm bodies are indented under the `=>`:
 
@@ -491,7 +491,7 @@ else
   expr_c
 ```
 
-There is no `elif` keyword — use `else if` (two keywords).
+There is no `elif` keyword. Use `else if` (two keywords).
 
 **Examples:**
 ```
@@ -527,7 +527,7 @@ Crypto.verify(password, hash)
 Server.configure(port: 8080, host: "localhost")
 ```
 
-Named arguments are syntactic — they do not change semantics. The compiler verifies that named arguments match parameter names.
+Named arguments are syntactic and do not change semantics. The compiler verifies that named arguments match parameter names.
 
 ### 3.7.5 Field Access
 
@@ -989,7 +989,7 @@ The following EBNF grammar defines the complete syntax of `.mn` files. This gram
 ### 3.14.1 Notation
 
 ```
-(* EBNF notation — same conventions as Chapter 2, Section 2.16.1 *)
+(* EBNF notation -- same conventions as Chapter 2, Section 2.16.1 *)
 (*   INDENT  increase indentation level by 2 spaces               *)
 (*   DEDENT  decrease indentation level by 2 spaces               *)
 (*   NL      newline character                                     *)
@@ -1015,7 +1015,7 @@ string_char     = ? any Unicode character except '"' and '\' ?
 string_literal  = '"' , { string_char } , '"'
                 | '"""' , NL , { ? any character ? } , NL , '"""' ;
 
-(* Interpolated strings — expressions inside braces are evaluated *)
+(* Interpolated strings -- expressions inside braces are evaluated *)
 interpolated_string = '"' , { string_char | ( "{" , expr , "}" ) } , '"' ;
 
 (* Integer literals *)
@@ -1423,7 +1423,7 @@ The following constraints are enforced by the compiler but are not expressible i
 
 2. **Expression types.** Both branches of `if`/`else` must have the same type. All arms of `match` must have the same type. The type of a block is the type of its last expression.
 
-3. **Match exhaustiveness.** `match` expressions must be exhaustive — every possible value of the scrutinee type must be covered by at least one arm. The compiler checks this statically for enum types and uses wildcard coverage for open types.
+3. **Match exhaustiveness.** `match` expressions must be exhaustive. Every possible value of the scrutinee type must be covered by at least one arm. The compiler checks this statically for enum types and uses wildcard coverage for open types.
 
 4. **`try` context.** The `try` keyword may only appear inside a function whose return type is `Result<T, E>`. The error type of the `try` expression must be convertible to `E`.
 

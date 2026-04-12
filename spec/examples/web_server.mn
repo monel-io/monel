@@ -1,4 +1,4 @@
-# Web Server — async REST API with middleware, database, rate limiting, and graceful shutdown
+# Web Server: async REST API with middleware, database, rate limiting, and graceful shutdown
 # Demonstrates: async/await, structured concurrency, middleware chains, state machines,
 # per-error-variant contracts, effect tracking, effect budgets, and invariant enforcement
 #

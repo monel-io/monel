@@ -438,7 +438,7 @@ opt-level = "size"       # optimize for size
 
 ### 7.7.6 `[llm]` Section
 
-The LLM section configures AI-assisted tooling (`monel test --gen-llm-tests`, `monel suggest`, etc.). The compiler itself never uses an LLM — all verification is deterministic.
+The LLM section configures AI-assisted tooling (`monel test --gen-llm-tests`, `monel suggest`, etc.). The compiler itself never uses an LLM. All verification is deterministic.
 
 ```toml
 [llm]

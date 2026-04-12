@@ -8,11 +8,11 @@ This chapter specifies the Monel type system, including primitive and composite 
 
 The Monel type system is designed around three goals:
 
-1. **Expressiveness** — types describe *what* data means, not just what shape it has. Refinement types, algebraic constraints, and contracts let authors specify invariants that the compiler enforces.
+1. **Expressiveness**: types describe *what* data means, not just what shape it has. Refinement types, algebraic constraints, and contracts let authors specify invariants that the compiler enforces.
 
-2. **Writability** — the type system uses standard, predictable syntax. Type inference within function bodies reduces boilerplate. Explicit signatures at function boundaries provide unambiguous context for code generation.
+2. **Writability**: the type system uses standard, predictable syntax. Type inference within function bodies reduces boilerplate. Explicit signatures at function boundaries provide unambiguous context for code generation.
 
-3. **Zero-cost safety** — ownership and borrowing eliminate garbage collection. Refinement types are verified at compile time where possible, with optional runtime checks. The type system catches errors that would otherwise require tests.
+3. **Zero-cost safety**: ownership and borrowing eliminate garbage collection. Refinement types are verified at compile time where possible, with optional runtime checks. The type system catches errors that would otherwise require tests.
 
 ---
 
@@ -161,7 +161,7 @@ References are the primary way to borrow data without taking ownership:
 | `&T`       | Immutable (shared) reference   |
 | `&mut T`   | Mutable (exclusive) reference  |
 
-References are always valid — they cannot be null and cannot dangle. The borrow checker (Section 4.10) enforces these guarantees.
+References are always valid. They cannot be null and cannot dangle. The borrow checker (Section 4.10) enforces these guarantees.
 
 ### 4.4.2 Raw Pointers
 
@@ -192,7 +192,7 @@ fn read_hardware_register(addr: UInt64) -> UInt32
 
 ## 4.5 Structural Typing
 
-Monel uses structural typing by default. Two types are compatible if they have the same structure — the same fields with the same types, in the same order.
+Monel uses structural typing by default. Two types are compatible if they have the same structure: the same fields with the same types, in the same order.
 
 ### 4.5.1 Struct Declarations
 
@@ -450,7 +450,7 @@ fn bad_next_port(p: Port) -> Port
 
 ### 4.9.5 Refinement Subtyping
 
-A refined type `T where P` is a subtype of `T`. A value of type `Port` can be used wherever `Int` is expected. The reverse is not true — assigning an `Int` to a `Port` requires a runtime check or a proof.
+A refined type `T where P` is a subtype of `T`. A value of type `Port` can be used wherever `Int` is expected. The reverse is not true; assigning an `Int` to a `Port` requires a runtime check or a proof.
 
 A refined type `T where P1 and P2` is a subtype of `T where P1`. More restrictive refinements are subtypes of less restrictive ones.
 
@@ -472,7 +472,7 @@ The compiler verifies that the parameter type for `port` is `Port` (or a type wi
 
 ## 4.10 Ownership and Borrowing
 
-Monel uses an ownership and borrowing system inspired by Rust. The key difference is that **lifetime annotations are always inferred** — programmers never write explicit lifetime parameters.
+Monel uses an ownership and borrowing system inspired by Rust. The key difference is that **lifetime annotations are always inferred**. Programmers never write explicit lifetime parameters.
 
 ### 4.10.1 Ownership Rules
 
@@ -521,13 +521,13 @@ fn append(data: &mut Vec<Int>, value: Int)
 
 Unlike Rust, Monel does not expose lifetime parameters in function signatures. The compiler infers lifetimes using the following rules:
 
-**Rule 1 — Input lifetimes**: Each reference parameter gets its own inferred lifetime.
+**Rule 1 (Input lifetimes)**: Each reference parameter gets its own inferred lifetime.
 
-**Rule 2 — Single input reference**: If there is exactly one input reference parameter, its lifetime is assigned to all output references.
+**Rule 2 (Single input reference)**: If there is exactly one input reference parameter, its lifetime is assigned to all output references.
 
-**Rule 3 — Method receiver**: If the function is a method with `&self` or `&mut self`, the lifetime of `self` is assigned to all output references.
+**Rule 3 (Method receiver)**: If the function is a method with `&self` or `&mut self`, the lifetime of `self` is assigned to all output references.
 
-**Rule 4 — Elision failure**: If the compiler cannot determine output lifetimes from rules 1-3, it performs whole-program lifetime analysis within the crate. If that also fails, it reports an error with a suggestion.
+**Rule 4 (Elision failure)**: If the compiler cannot determine output lifetimes from rules 1-3, it performs whole-program lifetime analysis within the crate. If that also fails, it reports an error with a suggestion.
 
 ```
 // The compiler infers that the returned reference lives as long as `items`
@@ -547,7 +547,7 @@ fn longest(a: &String as 'x, b: &String as 'y) -> &String as 'x | 'y
   if a.len() >= b.len() then a else b
 ```
 
-This syntax is intentionally rare and only needed when automatic inference fails. The `as 'name` annotation is a hint, not a lifetime parameter in the Rust sense — it guides the inference algorithm.
+This syntax is intentionally rare and only needed when automatic inference fails. The `as 'name` annotation is a hint, not a lifetime parameter in the Rust sense. It guides the inference algorithm.
 
 ### 4.10.5 Move Semantics
 
@@ -666,7 +666,7 @@ fn multiply<T: Mul + Add + Default, const M: UInt, const N: UInt, const P: UInt>
   a: &Matrix<T, M, N>,
   b: &Matrix<T, N, P>
 ) -> Matrix<T, M, P>
-  // N must match — enforced by the type system
+  // N must match -- enforced by the type system
   // ...
 ```
 
@@ -931,7 +931,7 @@ The compiler verifies:
 
 1. **Base type match**: The underlying type agrees (e.g., both based on `Int`).
 2. **Field match**: Struct fields match in name, type, and order.
-3. **Refinement enforcement**: The `where` clause is enforced at construction sites — either via runtime checks or SMT proof obligations when `requires`/`ensures` contracts are present.
+3. **Refinement enforcement**: The `where` clause is enforced at construction sites, either via runtime checks or SMT proof obligations when `requires`/`ensures` contracts are present.
 4. **Nominal agreement**: Types declared as semantically distinct (e.g., `UserId` vs. `OrderId`) must use `distinct type`.
 5. **Variant match**: For enum types, all declared variants must exist with matching field types.
 

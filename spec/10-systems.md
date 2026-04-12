@@ -1,6 +1,6 @@
 # 10. Systems Programming
 
-This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust — systems software, terminal emulators, editors, and performance-critical applications — while preserving the contract/implementation architecture.
+This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust (systems software, terminal emulators, editors, and performance-critical applications) while preserving the contract/implementation architecture.
 
 The `unsafe` effect makes low-level operations visible in the function signature. The compiler verifies that safety invariants are documented. The hot-swap runtime requires explicit confirmation before reloading unsafe functions.
 
@@ -8,7 +8,7 @@ The `unsafe` effect makes low-level operations visible in the function signature
 
 ## 10.1 The `unsafe` Effect
 
-`unsafe` is a first-class effect in Monel's effect system. Any operation that bypasses the language's safety guarantees — raw pointer access, FFI calls, inline assembly, unchecked casts — requires the `unsafe` effect.
+`unsafe` is a first-class effect in Monel's effect system. Any operation that bypasses the language's safety guarantees (raw pointer access, FFI calls, inline assembly, unchecked casts) requires the `unsafe` effect.
 
 ```mermaid
 graph LR
@@ -59,11 +59,11 @@ fn init_buffer(size: Int) -> Buffer
 
 The `unsafe` block:
 - Permits all unsafe operations within its body.
-- **Discharges** the `unsafe` effect — the enclosing function does **not** need `with unsafe` in its signature.
+- **Discharges** the `unsafe` effect, so the enclosing function does **not** need `with unsafe` in its signature.
 - Callers of the enclosing function do **not** need to declare or handle `unsafe`.
-- Must be as small as possible — the compiler warns on `unsafe` blocks that contain safe operations.
+- Must be as small as possible. The compiler warns on `unsafe` blocks that contain safe operations.
 
-This distinction is critical: a function can **use** unsafe internally while presenting a **safe interface** to callers. In the example above, `init_buffer` performs raw pointer allocation inside an `unsafe` block, but its signature is safe — callers treat it as an ordinary function. Compare with `alloc_buffer` in 10.1.1, which declares `with unsafe` and forces all callers to acknowledge the unsafe effect.
+This distinction is critical: a function can **use** unsafe internally while presenting a **safe interface** to callers. In the example above, `init_buffer` performs raw pointer allocation inside an `unsafe` block, but its signature is safe, so callers treat it as an ordinary function. Compare with `alloc_buffer` in 10.1.1, which declares `with unsafe` and forces all callers to acknowledge the unsafe effect.
 
 The rule:
 - `unsafe` block inside a function → effect discharged locally, function signature is safe.
@@ -86,9 +86,9 @@ fn init_pty(config: PtyConfig) -> Result<Pty, PtyError>
 ```
 
 The `safety` block is required for any function that declares `unsafe`. It documents:
-- `requires` — preconditions the caller must satisfy.
-- `invariant` — postconditions the function establishes.
-- `assumes` — assumptions about the environment (e.g., "platform supports POSIX PTY").
+- `requires`: preconditions the caller must satisfy.
+- `invariant`: postconditions the function establishes.
+- `assumes`: assumptions about the environment (e.g., "platform supports POSIX PTY").
 
 The compiler verifies that every `unsafe` block in the implementation corresponds to a documented safety invariant.
 
@@ -110,7 +110,7 @@ If the safety invariants have changed, the runtime refuses hot-swap entirely and
 
 Monel provides two raw pointer types for direct memory access.
 
-### 10.2.1 `Ptr<T>` — Immutable Raw Pointer
+### 10.2.1 `Ptr<T>`: Immutable Raw Pointer
 
 `Ptr<T>` represents a non-null, unmanaged pointer to a value of type `T`. It permits reading but not writing.
 
@@ -130,7 +130,7 @@ struct Ptr<T>
 | `as_mut` | `fn as_mut(self) -> MutPtr<T>` | Cast to mutable (unsafe) |
 | `to_int` | `fn to_int(self) -> Int` | Convert to integer address |
 
-### 10.2.2 `MutPtr<T>` — Mutable Raw Pointer
+### 10.2.2 `MutPtr<T>`: Mutable Raw Pointer
 
 `MutPtr<T>` represents a non-null, unmanaged pointer to a value of type `T`. It permits both reading and writing.
 
@@ -199,8 +199,8 @@ fn process()
 
 Values can be borrowed without transferring ownership:
 
-- `T` (non-mut parameter) — immutable borrow (multiple allowed simultaneously)
-- `mut T` — mutable borrow (exclusive: no other borrows while active)
+- `T` (non-mut parameter): immutable borrow (multiple allowed simultaneously)
+- `mut T`: mutable borrow (exclusive: no other borrows while active)
 
 ```
 fn print_len(buf: Buffer)
@@ -234,16 +234,16 @@ Drop is called automatically when a value goes out of scope. Drop order is rever
 
 ### 10.3.4 RAII (Resource Acquisition Is Initialization)
 
-Resources are tied to object lifetimes. File handles, sockets, locks, PTY descriptors — all are closed/released when their owning value is dropped:
+Resources are tied to object lifetimes. File handles, sockets, locks, and PTY descriptors are all closed/released when their owning value is dropped:
 
 ```
 fn with_file()
   let f = File.open("data.txt")?     // acquires file handle
   let data = f.read_all()?            // uses file
-  // f dropped here — file handle closed automatically
+  // f dropped here -- file handle closed automatically
 ```
 
-This pattern is pervasive. There is no `finally`, no `defer`, no `using` — RAII handles all resource cleanup.
+This pattern is pervasive. There is no `finally`, no `defer`, no `using`. RAII handles all resource cleanup.
 
 ### 10.3.5 Arena Allocators
 
@@ -259,9 +259,9 @@ fn parse_document(input: String) -> Document
 ```
 
 Arena types:
-- `Arena` — general-purpose bump allocator, frees all memory at once.
-- `TypedArena<T>` — arena for a single type, enables iteration over allocated values.
-- `ScopedArena` — arena tied to a lexical scope, cannot escape.
+- `Arena`: general-purpose bump allocator, frees all memory at once.
+- `TypedArena<T>`: arena for a single type, enables iteration over allocated values.
+- `ScopedArena`: arena tied to a lexical scope, cannot escape.
 
 Arena allocation requires the `unsafe` effect only for raw pointer access. The `Arena.alloc<T>()` method returns a safe reference bound to the arena's lifetime.
 
@@ -319,9 +319,9 @@ extern "C"
 ```
 
 Supported calling conventions:
-- `"C"` — the platform's C calling convention (default).
-- `"C-unwind"` — C calling convention that permits unwinding across the FFI boundary.
-- `"system"` — the platform's system calling convention (stdcall on Windows, C elsewhere).
+- `"C"`: the platform's C calling convention (default).
+- `"C-unwind"`: C calling convention that permits unwinding across the FFI boundary.
+- `"system"`: the platform's system calling convention (stdcall on Windows, C elsewhere).
 
 ### 10.4.2 C Type Mappings
 
@@ -363,11 +363,11 @@ struct Termios
 ```
 
 Additional repr options:
-- `@repr(C)` — C-compatible layout with C alignment rules.
-- `@repr(C, packed)` — C layout with no padding.
-- `@repr(C, align(N))` — C layout with minimum alignment `N`.
-- `@repr(transparent)` — same layout as the single field (for newtype wrappers).
-- `@repr(Int8)`, `@repr(UInt32)`, etc. — for enum discriminant type.
+- `@repr(C)`: C-compatible layout with C alignment rules.
+- `@repr(C, packed)`: C layout with no padding.
+- `@repr(C, align(N))`: C layout with minimum alignment `N`.
+- `@repr(transparent)`: same layout as the single field (for newtype wrappers).
+- `@repr(Int8)`, `@repr(UInt32)`, etc.: for enum discriminant type.
 
 ### 10.4.4 Callbacks
 
@@ -434,7 +434,7 @@ fn get_terminal_attrs(fd: Fd) -> Result<Termios, IoError>
 The safe wrapper:
 1. Converts raw return codes to `Result`.
 2. Manages pointer lifetimes.
-3. Does not require the `unsafe` effect on its signature — the `unsafe` block discharges it internally.
+3. Does not require the `unsafe` effect on its signature. The `unsafe` block discharges it internally.
 
 ---
 
@@ -442,7 +442,7 @@ The safe wrapper:
 
 Monel provides types for direct interaction with operating system I/O primitives.
 
-### 10.5.1 `Fd` — File Descriptor
+### 10.5.1 `Fd`: File Descriptor
 
 `Fd` is an owned file descriptor. It closes the descriptor on drop.
 
@@ -482,7 +482,7 @@ impl Drop for Fd
       close(self.raw)
 ```
 
-### 10.5.2 `Pty` — Pseudo-Terminal
+### 10.5.2 `Pty`: Pseudo-Terminal
 
 `Pty` manages a pseudo-terminal pair (master and slave file descriptors):
 
@@ -516,7 +516,7 @@ fn Pty.spawn(self: Pty, cmd: String, args: Array<String>) -> Result<Process, Pty
   // ...
 ```
 
-### 10.5.3 `Mmap` — Memory-Mapped I/O
+### 10.5.3 `Mmap`: Memory-Mapped I/O
 
 `Mmap` provides memory-mapped file access:
 
@@ -604,7 +604,7 @@ fn Signal.handle(sig: SignalKind, handler: fn() -> Unit) -> Result<SignalGuard, 
   // ...
 ```
 
-Signal handlers run in a restricted context — they may only set atomic flags and write to pipes. The compiler enforces this by requiring signal handler functions to have the signature `fn() -> Unit` with no captured mutable state except atomics.
+Signal handlers run in a restricted context: they may only set atomic flags and write to pipes. The compiler enforces this by requiring signal handler functions to have the signature `fn() -> Unit` with no captured mutable state except atomics.
 
 ### 10.6.3 Async Signal Integration
 
@@ -646,9 +646,9 @@ fn cell_index(row: Int, col: Int, width: Int) -> Int
 ```
 
 Variants:
-- `@inline` — the compiler should inline this function (advisory).
-- `@inline(always)` — the compiler must inline this function (mandatory).
-- `@inline(never)` — the compiler must not inline this function.
+- `@inline`: the compiler should inline this function (advisory).
+- `@inline(always)`: the compiler must inline this function (mandatory).
+- `@inline(never)`: the compiler must not inline this function.
 
 ### 10.7.2 Const Generics
 
@@ -709,7 +709,7 @@ let FIB_20 = comptime { fibonacci(20) }  // computed at compile time
 
 ### 10.7.4 Monomorphization
 
-Generic functions are monomorphized — a specialized copy is generated for each concrete type used. This eliminates virtual dispatch overhead:
+Generic functions are monomorphized: a specialized copy is generated for each concrete type used. This eliminates virtual dispatch overhead:
 
 ```
 fn sum<T: Add>(items: Array<T>) -> T

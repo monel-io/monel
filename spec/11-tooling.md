@@ -57,7 +57,7 @@ The `llm` format is specifically designed to maximize semantic density within a 
 - Uses a consistent, terse syntax that LLMs can parse reliably.
 - Includes structural markers (`>>>`, `---`, `<<<`) that models attend to strongly.
 
-Example — `monel query surface std/json --format llm`:
+Example, `monel query surface std/json --format llm`:
 
 ```
 >>>std/json
@@ -100,9 +100,9 @@ monel query surface myapp/handler --include-contracts  # include contract annota
 ```
 
 Options:
-- `--include-contracts` — include `doc:`, `fails:`, and `panics:` annotations.
-- `--include-private` — include non-exported items.
-- `--depth N` — for nested modules, recurse N levels deep (default 1).
+- `--include-contracts`: include `doc:`, `fails:`, and `panics:` annotations.
+- `--include-private`: include non-exported items.
+- `--depth N`: for nested modules, recurse N levels deep (default 1).
 
 #### `monel query fn <module>::<fn>`
 
@@ -140,7 +140,7 @@ Output includes:
 
 #### `monel query effects <module>::<fn>`
 
-Returns the transitive effect set for a function — every effect it produces, directly or through callees.
+Returns the transitive effect set for a function: every effect it produces, directly or through callees.
 
 ```bash
 monel query effects myapp/handler::process_request
@@ -171,7 +171,7 @@ monel query deps myapp/handler --format json
 
 #### `monel query rdeps <module>`
 
-Returns the reverse dependency graph — which modules depend on this one.
+Returns the reverse dependency graph (which modules depend on this one).
 
 ```bash
 monel query rdeps std/json
@@ -242,7 +242,7 @@ myapp/handler::process_request
 
 #### `monel query blast <symbol>`
 
-Returns the "blast radius" — everything that could break if a symbol changes.
+Returns the "blast radius": everything that could break if a symbol changes.
 
 ```bash
 monel query blast myapp/model::User
@@ -261,10 +261,10 @@ myapp/model::User
   risk: high (public type, widely used)
 
   modules affected:
-    myapp/handler — 5 functions
-    myapp/db — 3 functions
-    myapp/auth — 2 functions
-    myapp/api — 4 functions
+    myapp/handler -- 5 functions
+    myapp/db -- 3 functions
+    myapp/auth -- 2 functions
+    myapp/api -- 4 functions
     ...
 ```
 
@@ -451,7 +451,7 @@ Every fix contains one or more edits, each with `old_string` and `new_string`:
 }
 ```
 
-This format is directly compatible with the edit operations used by AI coding tools (Claude Code, Cursor, Copilot, etc.). An AI tool can apply fixes by performing exact string replacement — no line-number arithmetic, no parsing, no ambiguity.
+This format is directly compatible with the edit operations used by AI coding tools (Claude Code, Cursor, Copilot, etc.). An AI tool can apply fixes by performing exact string replacement, with no line-number arithmetic, no parsing, and no ambiguity.
 
 ### 11.3.3 Fix Categories
 
@@ -461,7 +461,7 @@ Fixes are categorized by confidence:
 |----------|-------------|-----------------|
 | `certain` | The fix is unambiguously correct | Yes |
 | `suggested` | The fix is likely correct but has alternatives | With confirmation |
-| `possible` | One of several possible fixes | No — requires choice |
+| `possible` | One of several possible fixes | No, requires choice |
 
 ```json
 {
@@ -512,8 +512,8 @@ Rename updates:
 - Documentation comments.
 
 Options:
-- `--dry-run` — show changes without applying.
-- `--format json` — output changes as JSON edits.
+- `--dry-run`: show changes without applying.
+- `--format json`: output changes as JSON edits.
 
 ### 11.4.2 Move
 
@@ -743,7 +743,7 @@ Removed: myapp/handler::legacy_process
 
 ## 11.7 AI-Assisted Commands
 
-These commands integrate with configured LLMs for code generation and explanation. All are optional — the core toolchain works without an LLM.
+These commands integrate with configured LLMs for code generation and explanation. All are optional; the core toolchain works without an LLM.
 
 ### 11.7.1 `monel sketch`
 
@@ -764,8 +764,8 @@ fn rate_limit(req: &HttpRequest, config: &RateLimitConfig) -> Result<Unit, RateL
 ```
 
 Options:
-- `--module <mod>` — generate in the context of a specific module.
-- `--output <file>` — write to file instead of stdout.
+- `--module <mod>`: generate in the context of a specific module.
+- `--output <file>`: write to file instead of stdout.
 
 ### 11.7.2 `monel explain`
 
@@ -823,9 +823,9 @@ monel init --template web          # web service template
 ```
 
 Creates:
-- `monel.project` — project configuration.
-- `src/main.mn` — entry point (for applications).
-- `src/lib.mn` — library root (for libraries).
+- `monel.project`: project configuration.
+- `src/main.mn`: entry point (for applications).
+- `src/lib.mn`: library root (for libraries).
 
 ### 11.8.2 `monel sync`
 
@@ -944,8 +944,8 @@ The REPL supports:
 - Expression evaluation.
 - Type queries (`:type <expr>`).
 - Effect queries (`:effects <expr>`).
-- Contract checking — `requires`/`ensures` contracts are checked at runtime.
-- Parity checking — if contracts are in scope, the REPL verifies that evaluated expressions satisfy them.
+- Contract checking: `requires`/`ensures` contracts are checked at runtime.
+- Parity checking: if contracts are in scope, the REPL verifies that evaluated expressions satisfy them.
 - Loading and reloading modules (`:load`, `:reload`).
 
 ---
@@ -964,11 +964,11 @@ monel dev --no-overlay             # disable error overlay
 ```
 
 On file change, the dev server:
-1. **Incrementally rebuilds** — only recompiles changed functions and their transitive dependents. Target: sub-100ms for deterministic checks.
-2. **Runs parity checks** — verifies that changed implementations still match their contracts.
-3. **Hot-swaps safe functions** — replaces function implementations in the running program without restart (see below).
-4. **Updates error overlay** — displays errors in a terminal overlay or LSP diagnostics.
-5. **Streams live effect visualization** — shows which effects are being exercised in real time.
+1. **Incrementally rebuilds**: only recompiles changed functions and their transitive dependents. Target: sub-100ms for deterministic checks.
+2. **Runs parity checks**: verifies that changed implementations still match their contracts.
+3. **Hot-swaps safe functions**: replaces function implementations in the running program without restart (see below).
+4. **Updates error overlay**: displays errors in a terminal overlay or LSP diagnostics.
+5. **Streams live effect visualization**: shows which effects are being exercised in real time.
 
 ### 11.9.2 Function-Level Hot-Swap
 
@@ -1034,16 +1034,16 @@ This section quantifies the tooling advantage by comparing the number of tool ca
 
 An AI tool must:
 
-1. Search for HTTP handler files (`grep`, `find`) — 2-3 calls.
-2. Read candidate files to find the right one — 2-3 calls.
-3. Understand the handler signature and middleware pattern — 1-2 calls.
-4. Search for existing rate limiting code — 1-2 calls.
-5. Search for configuration patterns — 1-2 calls.
-6. Read test files to understand testing patterns — 1-2 calls.
-7. Search for import conventions — 1 call.
-8. Read related middleware for patterns — 1-2 calls.
-9. Apply changes — 3-5 calls (handler, config, tests, etc.).
-10. Run tests and fix errors — 2-5 calls.
+1. Search for HTTP handler files (`grep`, `find`): 2-3 calls.
+2. Read candidate files to find the right one: 2-3 calls.
+3. Understand the handler signature and middleware pattern: 1-2 calls.
+4. Search for existing rate limiting code: 1-2 calls.
+5. Search for configuration patterns: 1-2 calls.
+6. Read test files to understand testing patterns: 1-2 calls.
+7. Search for import conventions: 1 call.
+8. Read related middleware for patterns: 1-2 calls.
+9. Apply changes: 3-5 calls (handler, config, tests, etc.).
+10. Run tests and fix errors: 2-5 calls.
 
 **Total: ~15-30 tool calls**, many of which are speculative searches.
 
@@ -1051,13 +1051,13 @@ An AI tool must:
 
 An AI tool uses structured commands:
 
-1. `monel context "Add rate limiting"` — 1 call (returns exact file set).
-2. Read primary file (handler contracts + implementation) — 1 call.
-3. `monel query surface myapp/middleware --format llm` — 1 call (middleware patterns).
-4. `monel sketch "rate limit by IP"` — 1 call (generates contract stub).
-5. `monel generate rate_limit` — 1 call (generates implementation from contracts).
-6. `monel check --changed --format json` — 1 call (verify, get actionable fixes).
-7. `monel fix` — 0-1 calls (auto-apply certain fixes).
+1. `monel context "Add rate limiting"`: 1 call (returns exact file set).
+2. Read primary file (handler contracts + implementation): 1 call.
+3. `monel query surface myapp/middleware --format llm`: 1 call (middleware patterns).
+4. `monel sketch "rate limit by IP"`: 1 call (generates contract stub).
+5. `monel generate rate_limit`: 1 call (generates implementation from contracts).
+6. `monel check --changed --format json`: 1 call (verify, get actionable fixes).
+7. `monel fix`: 0-1 calls (auto-apply certain fixes).
 
 **Total: ~6-8 tool calls**, all targeted and productive.
 
@@ -1082,12 +1082,12 @@ The Monel language server (`monel lsp`) exposes all query and refactoring capabi
 
 ### 11.11.2 Custom LSP Extensions
 
-- `monel/parity` — parity status for current file.
-- `monel/effects` — effect visualization for current function.
-- `monel/blast` — blast radius for symbol under cursor.
-- `monel/context` — context gathering for selected code.
-- `monel/contracts` — show/edit contracts for current function.
-- `monel/hotswap` — hot-swap status and confirmation.
+- `monel/parity`: parity status for current file.
+- `monel/effects`: effect visualization for current function.
+- `monel/blast`: blast radius for symbol under cursor.
+- `monel/context`: context gathering for selected code.
+- `monel/contracts`: show/edit contracts for current function.
+- `monel/hotswap`: hot-swap status and confirmation.
 
 ### 11.11.3 Editor Integration
 

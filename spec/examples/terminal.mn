@@ -1,4 +1,4 @@
-# Terminal — raw terminal I/O with PTY, ANSI parsing, and state machine
+# Terminal: raw terminal I/O with PTY, ANSI parsing, and state machine
 
 use std/terminal {Pty, PtyConfig, RawMode, AnsiParser, AnsiEvent}
 use std/render {Surface, Cell as RenderCell, Color}

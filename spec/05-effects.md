@@ -8,7 +8,7 @@ This chapter specifies how developers declare side effects and how the compiler 
 
 1. **Effects are explicit.** Every function's side effects are part of its signature. A function that reads from a database, writes to the filesystem, or performs network I/O declares those effects. The compiler enforces that no undeclared effects occur.
 
-2. **Pure by default.** A function with no `effects:` declaration is pure — it performs no side effects. This is the common case for data transformations, algorithms, and business logic.
+2. **Pure by default.** A function with no `effects:` declaration is pure. It performs no side effects. This is the common case for data transformations, algorithms, and business logic.
 
 3. **Transitive and compositional.** If function `f` calls function `g`, and `g` has effects, then `f` must declare those same effects. Effects propagate transitively through the call graph.
 
@@ -86,7 +86,7 @@ No effects. The function is a pure computation.
 | `Db.read`  | Read from a database (queries, lookups)           |
 | `Db.write` | Write to a database (inserts, updates, deletes)   |
 
-`Db.write` implies `Db.read` — a function that writes to the database is assumed to also be able to read.
+`Db.write` implies `Db.read`. A function that writes to the database is assumed to also be able to read.
 
 ### 5.3.3 Network Effects: `Http` and `Net`
 
@@ -208,7 +208,7 @@ The `unsafe` effect is required for:
 
 Most code implicitly allocates via `Vec`, `String`, `Box`, etc. The `Alloc` effect category exists for no-alloc contexts (embedded systems, real-time code) where heap allocation must be forbidden.
 
-In normal compilation, `Alloc` effects are not tracked — they are implicitly allowed. A project can enable explicit allocation tracking with:
+In normal compilation, `Alloc` effects are not tracked; they are implicitly allowed. A project can enable explicit allocation tracking with:
 
 ```toml
 # monel.project
@@ -331,7 +331,7 @@ fn get_user_name(id: UserId) -> Result<String, DbError>
 fn process() -> Result<Unit, Error>
   effects: [Db.read]  // required transitively
   let name = get_user_name(UserId(1))?
-  println(name)   // println is pure (writes to stdout, but stdout is special — see 5.5.5)
+  println(name)   // println is pure (writes to stdout, but stdout is special -- see 5.5.5)
   Ok(())
 ```
 
@@ -341,7 +341,7 @@ A pure function (no `effects:` declaration) cannot call any function that has ef
 
 ```
 fn compute(x: Int) -> Int
-  // pure — no effects
+  // pure -- no effects
   let y = x * 2
   log.info("computed")  // ERROR: cannot call Log.write from a pure function
   y

@@ -2,26 +2,26 @@
 
 ## Goal
 
-Parse `.mn` files into ASTs. Replace all hand-constructed test ASTs with parsed ones. This is the critical path — every other roadmap item is blocked on this.
+Parse `.mn` files into ASTs. Replace all hand-constructed test ASTs with parsed ones. This is the critical path. Every other roadmap item is blocked on this.
 
 ## Success Metrics
 
 | Metric | Target | How to measure |
 |--------|--------|----------------|
-| **Example files parsed** | 5/5 (hello, stack, http_handler, terminal, web_server) | `cargo test` — one integration test per file that parses without error |
+| **Example files parsed** | 5/5 (hello, stack, http_handler, terminal, web_server) | `cargo test`, one integration test per file that parses without error |
 | **Construct coverage** | All constructs used in examples parse correctly | Checklist below; tracked as `#[test]` per construct |
 | **Contract clause coverage** | 8/8 clause types parsed | `requires:`, `ensures:`, `effects:`, `panics:`, `complexity:`, `invariant:`, `fails:`, `doc:` |
 | **Parity tests migrated** | 12/12 hand-constructed ASTs replaced | All tests in `parity/tests.rs` parse from `.mn` text instead of building ASTs by hand |
 | **Roundtrip fidelity** | parse → pretty-print → parse = same AST | Automated test per example file |
 | **Error quality** | Errors include line/column and expected token | Manual review of 5 intentionally broken inputs |
 
-Track progress by running `cargo test -p monel-parser` — each passing test proves one more construct works.
+Track progress by running `cargo test -p monel-parser`. Each passing test proves one more construct works.
 
 ## Architecture Decision: Unified AST
 
 The existing code has two AST types from the old two-file model:
-- `IntentFile` (contracts only — from `.mn.intent`)
-- `ImplFile` (code only — from `.mn`)
+- `IntentFile` (contracts only: from `.mn.intent`)
+- `ImplFile` (code only: from `.mn`)
 
 The new single-file model needs a **unified AST** where contracts and body coexist:
 
@@ -87,7 +87,7 @@ Indentation-sensitive grammars are hard to express in PEG/parser combinator fram
 
 Ordered by what the examples need, not by spec chapter.
 
-### Phase 1: Minimal — parse `hello.mn`
+### Phase 1: Minimal: parse `hello.mn`
 
 This is the smallest example and exercises the most constructs.
 
@@ -110,9 +110,9 @@ This is the smallest example and exercises the most constructs.
 - [ ] `try expr`
 - [ ] Struct construction (indented, no braces)
 
-**Done when:** `cargo test parse_hello` passes — parsed AST matches expected structure.
+**Done when:** `cargo test parse_hello` passes. Parsed AST matches expected structure.
 
-### Phase 2: Core — parse `stack.mn`
+### Phase 2: Core: parse `stack.mn`
 
 Adds generics, traits, impl blocks, visibility, constants, owned self.
 
@@ -129,7 +129,7 @@ Adds generics, traits, impl blocks, visibility, constants, owned self.
 - [ ] Closures: `fn() -> Option<T>`
 - [ ] Integer literals with underscores: `1_000_000`
 
-### Phase 3: Full — parse `http_handler.mn`, `terminal.mn`, `web_server.mn`
+### Phase 3: Full: parse `http_handler.mn`, `terminal.mn`, `web_server.mn`
 
 Adds async, unsafe, state machines, layouts, interactions.
 
@@ -199,13 +199,13 @@ The parser produces a syntactic AST. Semantic analysis (are types valid? do effe
 
 ## Risk
 
-**Indentation ambiguity.** The hardest part is distinguishing contract clauses from body code — both are indented under `fn`. The rule: lines starting with a contract keyword (`requires:`, `ensures:`, `effects:`, `panics:`, `complexity:`, `fails:`, `doc:`) at the first indentation level below `fn` are contracts. The first line that doesn't match a contract keyword starts the body. This is unambiguous if we commit to it, but it means a local variable named `effects` would be a parse error inside a function body at contract indentation level. Acceptable — these are reserved keywords.
+**Indentation ambiguity.** The hardest part is distinguishing contract clauses from body code: both are indented under `fn`. The rule: lines starting with a contract keyword (`requires:`, `ensures:`, `effects:`, `panics:`, `complexity:`, `fails:`, `doc:`) at the first indentation level below `fn` are contracts. The first line that doesn't match a contract keyword starts the body. This is unambiguous if we commit to it, but it means a local variable named `effects` would be a parse error inside a function body at contract indentation level. Acceptable: these are reserved keywords.
 
 **Expression complexity.** The examples use string interpolation (`"{self.name}"`), method chaining, closures, and pattern matching. A production-quality expression parser is significant work. For Phase 1, we can parse expressions as opaque token sequences (skip body parsing) and still prove the grammar works for declarations and contracts.
 
 ## Open Questions
 
-1. **Body parsing depth.** Do we parse function bodies into a full expression AST, or treat them as opaque text for now? Full AST is needed for `monel check` (Step 2) but not for proving the grammar works. Recommend: parse bodies into AST from the start — we'll need it soon and retrofitting is harder.
+1. **Body parsing depth.** Do we parse function bodies into a full expression AST, or treat them as opaque text for now? Full AST is needed for `monel check` (Step 2) but not for proving the grammar works. Recommend: parse bodies into AST from the start; retrofitting is harder.
 
 2. **Expression AST for contracts.** Contract predicates like `self.len == old(self.len) + 1` need to be parsed into expression ASTs (for SMT translation later). Same expression parser as bodies, but with `old()` and `result` as special forms.
 

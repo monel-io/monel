@@ -1,4 +1,4 @@
-# HTTP Handler — backend service with auth, routing, and middleware
+# HTTP Handler: backend service with auth, routing, and middleware
 
 use std/http {Request, Response, Method, Handler, Route, Server, StatusCode}
 use std/time {Duration, Instant, Clock}

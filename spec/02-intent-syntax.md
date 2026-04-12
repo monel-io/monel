@@ -9,7 +9,7 @@
 
 ## 2.1 Purpose of This Chapter
 
-This chapter defines the syntax and semantics of Monel contracts. Contracts are inline annotations on functions, types, state machines, and layouts in `.mn` files. They declare *what* a construct must satisfy — preconditions, postconditions, invariants, effects, panic freedom, and complexity bounds. The compiler verifies contracts against the accompanying implementation.
+This chapter defines the syntax and semantics of Monel contracts. Contracts are inline annotations on functions, types, state machines, and layouts in `.mn` files. They declare *what* a construct must satisfy: preconditions, postconditions, invariants, effects, panic freedom, and complexity bounds. The compiler verifies contracts against the accompanying implementation.
 
 ---
 
@@ -17,7 +17,7 @@ This chapter defines the syntax and semantics of Monel contracts. Contracts are 
 
 Contracts and implementation live in the same `.mn` file. There are no separate intent files. A function's contracts appear between its signature and its body, distinguished by the contract keywords (`requires:`, `ensures:`, `effects:`, etc.). The parser treats any line beginning with a contract keyword (at the appropriate indentation level) as part of the contract block.
 
-Contracts are always verified when present. There is no opt-in annotation — the presence of a contract keyword is sufficient to activate the corresponding verification pass.
+Contracts are always verified when present. There is no opt-in annotation. The presence of a contract keyword is sufficient to activate the corresponding verification pass.
 
 A function with no contract keywords is valid. The compiler performs standard type checking, borrow checking, and effect inference, but does not generate SMT proof obligations.
 
@@ -98,8 +98,8 @@ fn authenticate(creds: Credentials) -> Result<Session, AuthError>
 
 The compiler verifies each conditional clause on the corresponding code paths:
 
-- `ok => P` — at every return point that produces `Ok(v)`, `P` must hold with `result` bound to `v`.
-- `err(V) => P` — at every return point that produces `Err(V(...))`, `P` must hold.
+- `ok => P`: at every return point that produces `Ok(v)`, `P` must hold with `result` bound to `v`.
+- `err(V) => P`: at every return point that produces `Err(V(...))`, `P` must hold.
 - An unconditional `ensures:` clause (no prefix) must hold at all return points.
 
 Per-error-variant postconditions enable verification that a function preserves specific invariants on each failure path. For example, `err(Overflow) => self == old(self)` asserts rollback on overflow.
@@ -122,7 +122,7 @@ A function with no `effects:` declaration is pure. See Chapter 5 (Effect System)
 
 Declares the panic behavior of a function. Two forms:
 
-**`panics: never`** — the function cannot panic under any circumstances. The compiler proves this via static analysis. Proof obligations include:
+**`panics: never`**: the function cannot panic under any circumstances. The compiler proves this via static analysis. Proof obligations include:
 
 - No explicit `panic()` calls reachable
 - No array index without bounds proof
@@ -151,7 +151,7 @@ error[S0104]: function declared `panics: never` but may panic
    = help: use `list.get(index)` which returns `Option<T>`
 ```
 
-**`panics: <condition>`** — the function may panic, but only when the condition holds. The compiler verifies that all panic paths satisfy the declared condition and that no panic occurs when the condition is false.
+**`panics: <condition>`**: the function may panic, but only when the condition holds. The compiler verifies that all panic paths satisfy the declared condition and that no panic occurs when the condition is false.
 
 ```
 fn nth(self: Greeter, index: Int) -> String
@@ -184,13 +184,13 @@ fn find_greeting(self: Greeter, substring: String) -> Option<String>
   ...
 ```
 
-The compiler uses `complexity:` as an optimizer constraint: if an optimization pass would change the asymptotic behavior (for example, introducing a nested loop over the input), the pass is rejected. The compiler does not prove the implementation meets the bound — it prevents the optimizer from exceeding it.
+The compiler uses `complexity:` as an optimizer constraint: if an optimization pass would change the asymptotic behavior (for example, introducing a nested loop over the input), the pass is rejected. The compiler does not prove the implementation meets the bound; it prevents the optimizer from exceeding it.
 
 ### 2.3.6 `invariant:`
 
 Declares a predicate that must hold at specified points. Two forms:
 
-**Type invariants** — hold after every constructor and after every method that takes `mut self`:
+**Type invariants**: hold after every constructor and after every method that takes `mut self`:
 
 ```
 type BoundedQueue<T>
@@ -208,7 +208,7 @@ The compiler inserts proof obligations:
 - After every method with `mut self`, the invariant must hold at every return point.
 - At the start of every public method, the invariant is assumed (the caller is responsible for ensuring it).
 
-**Loop invariants** — hold at the start of each loop iteration:
+**Loop invariants**: hold at the start of each loop iteration:
 
 ```
 fn find_greeting(self: Greeter, substring: String) -> Option<String>
@@ -825,13 +825,13 @@ fn is_expired(session: &Session) -> Bool = session.expires_at <= Clock.now()
 |---|---|
 | File format | Contracts are inline in `.mn` files |
 | Activation | Presence of a contract keyword activates verification |
-| Preconditions | `requires:` — SMT-verified at call sites |
-| Postconditions | `ensures:` — SMT-verified at return points; supports `ok =>` and `err(V) =>` |
-| Effects | `effects:` — compiler infers from body, checks subset |
-| Panic freedom | `panics: never` — proven by static analysis |
-| Complexity | `complexity:` — constrains the optimizer |
-| Type invariants | `invariant:` — verified after construction and mutation |
-| Error variants | `fails:` — exhaustiveness and reachability checked |
-| Documentation | `doc:` — optional, never compiled |
+| Preconditions | `requires:`: SMT-verified at call sites |
+| Postconditions | `ensures:`: SMT-verified at return points; supports `ok =>` and `err(V) =>` |
+| Effects | `effects:`: compiler infers from body, checks subset |
+| Panic freedom | `panics: never`: proven by static analysis |
+| Complexity | `complexity:`: constrains the optimizer |
+| Type invariants | `invariant:`: verified after construction and mutation |
+| Error variants | `fails:`: exhaustiveness and reachability checked |
+| Documentation | `doc:`: optional, never compiled |
 | Compact form | `fn name(...) -> T = expr` |
 | Solver timeout | Configurable; UNKNOWN results are warnings, not errors by default |

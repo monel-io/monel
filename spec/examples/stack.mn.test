@@ -1,4 +1,4 @@
-# Stack — contract-driven property tests
+# Stack: contract-driven property tests
 # Auto-generated from contracts with: monel test --gen-contract-tests
 # Manual tests and LLM-generated tests follow below
 

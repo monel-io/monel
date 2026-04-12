@@ -27,7 +27,7 @@ The compiler verifies five kinds of contracts:
 |----------|-------------------|
 | `requires:` | SMT solver (Z3) proves preconditions hold at every call site |
 | `ensures:` | SMT solver proves postconditions hold at every return point |
-| `effects:` | Inference checking — inferred effects must be a subset of declared effects |
+| `effects:` | Inference checking: inferred effects must be a subset of declared effects |
 | `invariant:` | SMT solver proves invariant holds after every mutation point |
 | `panics: never` | Static analysis proves no reachable code path can panic |
 
@@ -42,7 +42,7 @@ The Monel compiler (`monelc`) processes code through four stages:
 `.mn` and `.mn.test` files are parsed into ASTs. Each function's contracts and body are parsed into a single AST node.
 
 - Parse errors halt compilation with diagnostics.
-- The parser is incremental — a syntax error in one file does not prevent parsing other files.
+- The parser is incremental. A syntax error in one file does not prevent parsing other files.
 
 ### Stage 2: Static Verification
 
@@ -177,7 +177,7 @@ type BoundedQueue<T>
 Invariants are checked at:
 - After every constructor call
 - After every method that takes `&mut self`
-- At the beginning of every public method (assumed, not checked — this is the caller's responsibility via the constructor and mutation checks)
+- At the beginning of every public method (assumed, not checked; this is the caller's responsibility via the constructor and mutation checks)
 
 ```
 error[V0103]: invariant `self.items.len() <= self.capacity` not maintained
@@ -831,7 +831,7 @@ All verification-related error codes use the `V` prefix:
 | Code | Description |
 |------|-------------|
 | `V0201` | Refinement predicate not satisfied |
-| `V0202` | Refinement compatibility — implementation weaker than declaration |
+| `V0202` | Refinement compatibility: implementation weaker than declaration |
 
 ### State Machine (V05xx)
 

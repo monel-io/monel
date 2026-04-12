@@ -1,6 +1,6 @@
 # 12. Standard Library
 
-This chapter specifies the Monel standard library. The standard library is provided as modules — no types or functions are language primitives (except the syntax for literals, control flow, and the effect system, which are specified in earlier chapters). All standard library modules are self-hosting: they are written in Monel with their own contracts, subject to the same parity verification as user code.
+This chapter specifies the Monel standard library. The standard library is provided as modules. No types or functions are language primitives (except the syntax for literals, control flow, and the effect system, which are specified in earlier chapters). All standard library modules are self-hosting: they are written in Monel with their own contracts, subject to the same parity verification as user code.
 
 ---
 
@@ -53,7 +53,7 @@ The following types form the standard prelude and are automatically in scope for
 
 ---
 
-## 12.2 `std/io` — Input/Output
+## 12.2 `std/io`: Input/Output
 
 Provides fundamental I/O traits and types for reading and writing byte streams.
 
@@ -164,7 +164,7 @@ type IoErrorKind
 
 ---
 
-## 12.3 `std/fs` — Filesystem
+## 12.3 `std/fs`: Filesystem
 
 Provides filesystem operations. All functions carry the appropriate `Fs` effect.
 
@@ -305,7 +305,7 @@ struct Metadata
 
 ---
 
-## 12.4 `std/net` — Networking
+## 12.4 `std/net`: Networking
 
 Provides TCP and UDP networking. All operations carry the `Net` effect.
 
@@ -381,7 +381,7 @@ struct Ipv6Addr
 
 ---
 
-## 12.5 `std/http` — HTTP
+## 12.5 `std/http`: HTTP
 
 Provides HTTP client and server types. Built on `std/net` and `std/async`.
 
@@ -475,7 +475,7 @@ fn HttpServer.serve(self: mut Self, handler: fn(Request) -> Response) -> Result<
 
 ---
 
-## 12.6 `std/json` — JSON
+## 12.6 `std/json`: JSON
 
 Provides JSON serialization and deserialization.
 
@@ -577,7 +577,7 @@ type JsonErrorKind
 
 ---
 
-## 12.7 `std/text` — Text Processing
+## 12.7 `std/text`: Text Processing
 
 String manipulation, regex, and formatting utilities.
 
@@ -680,7 +680,7 @@ format("{:#b}", 42)        // binary: 0b101010
 
 ---
 
-## 12.8 `std/math` — Mathematics
+## 12.8 `std/math`: Mathematics
 
 ### 12.8.1 Constants
 
@@ -750,7 +750,7 @@ impl Int
 
 ---
 
-## 12.9 `std/time` — Time
+## 12.9 `std/time`: Time
 
 ### 12.9.1 Core Types
 
@@ -838,7 +838,7 @@ fn timeout<T>(duration: Duration, future: impl Future<T>) -> Result<T, TimeoutEr
 
 ---
 
-## 12.10 `std/collections` — Additional Collections
+## 12.10 `std/collections`: Additional Collections
 
 Beyond the core `Vec`, `Map`, and `Set`, this module provides specialized collection types.
 
@@ -978,7 +978,7 @@ impl Set<T: Hash + Eq>
 
 ---
 
-## 12.11 `std/sync` — Synchronization
+## 12.11 `std/sync`: Synchronization
 
 Synchronization primitives for concurrent programming.
 
@@ -1101,7 +1101,7 @@ impl OnceCell<T>
 
 ---
 
-## 12.12 `std/async` — Async Runtime
+## 12.12 `std/async`: Async Runtime
 
 Provides the async runtime, task spawning, and event loop integration.
 
@@ -1197,7 +1197,7 @@ type LoopControl
 
 ---
 
-## 12.13 `std/crypto` — Cryptography
+## 12.13 `std/crypto`: Cryptography
 
 Provides hashing, encryption, and signing primitives.
 
@@ -1278,7 +1278,7 @@ fn random_int(min: Int, max: Int) -> Int
 
 ---
 
-## 12.14 `std/env` — Environment
+## 12.14 `std/env`: Environment
 
 ```
 fn var(name: String) -> Result<String, EnvError>
@@ -1322,7 +1322,7 @@ fn temp_dir() -> String
 
 ---
 
-## 12.15 `std/process` — Process Management
+## 12.15 `std/process`: Process Management
 
 ```
 type Command
@@ -1383,7 +1383,7 @@ type Stdio
 
 ---
 
-## 12.16 `std/terminal` — Terminal I/O
+## 12.16 `std/terminal`: Terminal I/O
 
 Terminal-specific I/O for building terminal applications.
 
@@ -1521,7 +1521,7 @@ See [Chapter 10, Section 10.5.2](10-systems.md#1052-pty--pseudo-terminal) for th
 
 ---
 
-## 12.17 `std/render` — GPU Rendering
+## 12.17 `std/render`: GPU Rendering
 
 GPU rendering abstractions for terminal and editor applications. See [Chapter 10, Section 10.8](10-systems.md#108-gpu-rendering) for the architecture. This section specifies the module's full API surface.
 
@@ -1669,7 +1669,7 @@ struct FontMetrics
 
 ---
 
-## 12.18 `std/signal` — Signal Handling
+## 12.18 `std/signal`: Signal Handling
 
 See [Chapter 10, Section 10.6](10-systems.md#106-signal-handling) for the full specification. This module re-exports the signal types and provides the handler API.
 
@@ -1679,7 +1679,7 @@ use std/signal.{Signal, SignalKind, SignalGuard, SignalStream}
 
 ---
 
-## 12.19 `std/test` — Testing
+## 12.19 `std/test`: Testing
 
 Provides the test framework, assertions, and property-based testing.
 
@@ -1817,7 +1817,7 @@ Each `ensures:` clause becomes a separate test. Conditional postconditions (`ok 
 | SMT (Z3) | Proves contracts hold for **all** inputs | Complete but may timeout on complex properties |
 | Generated property tests | Validates contracts for **sampled** inputs | Incomplete but catches implementation bugs SMT misses (e.g., integer overflow at specific values) |
 
-Both run during `monel build`. SMT provides proof; property tests provide empirical validation. They complement each other — SMT catches logical errors, property tests catch implementation bugs (off-by-one, overflow, edge cases in library calls).
+Both run during `monel build`. SMT provides proof; property tests provide empirical validation. They complement each other: SMT catches logical errors, property tests catch implementation bugs (off-by-one, overflow, edge cases in library calls).
 
 ### 12.19.5 LLM-Assisted Test Generation
 
@@ -1894,7 +1894,7 @@ fn with_env_var(name: String, value: String, f: fn() -> Unit) -> Unit
 
 ---
 
-## 12.20 `std/log` — Logging
+## 12.20 `std/log`: Logging
 
 Structured logging with level filtering.
 
@@ -1945,7 +1945,7 @@ struct LogEntry
 
 ---
 
-## 12.21 `std/fmt` — Formatting
+## 12.21 `std/fmt`: Formatting
 
 Formatting traits and utilities.
 
@@ -2009,7 +2009,7 @@ struct Point
 
 ---
 
-## 12.22 `std/iter` — Iterators
+## 12.22 `std/iter`: Iterators
 
 Iterator traits and combinators.
 
@@ -2094,7 +2094,7 @@ let map: Map<String, Int> = entries.iter().map(|e| (e.name.clone(), e.value)).co
 
 ---
 
-## 12.23 `std/mem` — Memory Utilities
+## 12.23 `std/mem`: Memory Utilities
 
 Low-level memory utilities. Most operations require the `unsafe` effect.
 
@@ -2159,7 +2159,7 @@ impl TypedArena<T>
 
 ---
 
-## 12.24 `std/ffi` — Foreign Function Interface
+## 12.24 `std/ffi`: Foreign Function Interface
 
 FFI helpers and C type definitions. See [Chapter 10, Section 10.4](10-systems.md#104-foreign-function-interface-ffi) for the full FFI specification.
 
@@ -2231,7 +2231,7 @@ trait Clone
   fn clone(self: Self) -> Self
 
 trait Copy: Clone
-  // marker trait — values are copied on assignment rather than moved
+  // marker trait -- values are copied on assignment rather than moved
 ```
 
 `Copy` is implemented by all primitive types, `Ptr<T>`, and `MutPtr<T>`. Types containing heap allocations (e.g., `String`, `Vec<T>`) implement `Clone` but not `Copy`.

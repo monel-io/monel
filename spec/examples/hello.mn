@@ -1,10 +1,10 @@
-# Greeter — a hello world that showcases every Monel differentiator
+# Greeter: a hello world that showcases every Monel differentiator
 #
 # What's here that other languages don't have:
 #   1.  Type invariants (enforced by SMT)
 #   2.  requires: / ensures: contracts (verified by compiler)
 #   3.  Per-error-variant postconditions (err(X) => ...)
-#   4.  old() references — including collection transforms
+#   4.  old() references, including collection transforms
 #   5.  Immutability inference (non-mut self → self unchanged)
 #   6.  Effect tracking (effects: [...])
 #   7.  panics: never (compiler-proven absence of panics)
@@ -83,7 +83,7 @@ fn name(self: Greeter) -> Name = self.name
 fn has_greeted(self: Greeter) -> Bool = self.greet_count > 0
 fn last_greeted(self: Greeter) -> Option<Instant> = self.last_greeted
 
-# ─── Nth — demonstrating panics: [...] (not never) ───
+# ─── Nth: demonstrating panics: [...] (not never) ───
 
 fn nth(self: Greeter, index: Int) -> String
   requires: index >= 0
@@ -93,7 +93,7 @@ fn nth(self: Greeter, index: Int) -> String
 
   self.history.get(index)
 
-# ─── Search — demonstrating loop invariant and complexity bound ───
+# ─── Search: demonstrating loop invariant and complexity bound ───
 
 fn find_greeting(self: Greeter, substring: String) -> Option<String>
   ensures:
@@ -120,7 +120,7 @@ fn main() -> Result<(), GreetError>
   try greeter.greet("Monel says hi.")
   try greeter.greet("Contracts are checked by the compiler.")
 
-  # safe — we know greet_count == 3
+  # safe -- we know greet_count == 3
   let first = greeter.nth(0)
   println("First greeting: {first}")
 
