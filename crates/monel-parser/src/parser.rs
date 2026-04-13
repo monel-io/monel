@@ -26,6 +26,7 @@ struct Parser {
     tokens: Vec<Spanned>,
     pos: usize,
     errors: Vec<ParseError>,
+    indent_depth: usize,
 }
 
 impl Parser {
@@ -34,6 +35,7 @@ impl Parser {
             tokens,
             pos: 0,
             errors: vec![],
+            indent_depth: 0,
         }
     }
 
@@ -85,6 +87,26 @@ impl Parser {
     fn skip_newlines(&mut self) {
         while matches!(self.peek(), Token::Newline) {
             self.advance();
+        }
+    }
+
+    fn consume_indent(&mut self) -> bool {
+        if self.peek() == &Token::Indent {
+            self.advance();
+            self.indent_depth += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_dedent(&mut self) -> bool {
+        if self.peek() == &Token::Dedent {
+            self.advance();
+            self.indent_depth = self.indent_depth.saturating_sub(1);
+            true
+        } else {
+            false
         }
     }
 
@@ -325,7 +347,8 @@ impl Parser {
         let mut body_stmts = vec![];
 
         if self.peek() == &Token::Indent {
-            self.advance(); // consume Indent
+            let entry_depth = self.indent_depth;
+            self.consume_indent();
 
             // Parse contract clauses until we hit a non-contract line
             loop {
@@ -343,11 +366,11 @@ impl Parser {
                     }
                     Some(RawToken::Requires) => {
                         self.advance();
-                        requires = self.parse_indented_exprs()?;
+                        requires.extend(self.parse_indented_exprs()?);
                     }
                     Some(RawToken::Ensures) => {
                         self.advance();
-                        ensures = self.parse_ensures_clauses()?;
+                        ensures.extend(self.parse_ensures_clauses()?);
                     }
                     Some(RawToken::Effects) => {
                         self.advance();
@@ -373,9 +396,11 @@ impl Parser {
                 }
             }
 
-            // Consume remaining dedent
-            if self.peek() == &Token::Dedent {
-                self.advance();
+            // Consume dedents until we're back to the depth we started at
+            while self.indent_depth > entry_depth {
+                if !self.consume_dedent() {
+                    break;
+                }
             }
         }
 
@@ -522,7 +547,20 @@ impl Parser {
             }
             _ => {
                 let expr = self.parse_expr()?;
-                Ok(EnsuresClause::Always(expr))
+                // Check for `condition => postcondition` (conditional ensures without ok/err)
+                if self.peek_raw() == Some(&RawToken::FatArrow) {
+                    self.advance();
+                    let postcondition = self.parse_expr()?;
+                    // Wrap as: Always(condition => postcondition) using BinOp or a dedicated node
+                    // For now, represent as Always with an implication (condition and postcondition)
+                    Ok(EnsuresClause::Always(Expr::BinOp(
+                        Box::new(expr),
+                        BinOp::And, // TODO: should be implication, using And as placeholder
+                        Box::new(postcondition),
+                    )))
+                } else {
+                    Ok(EnsuresClause::Always(expr))
+                }
             }
         }
     }
@@ -648,6 +686,10 @@ impl Parser {
             if matches!(self.peek(), Token::Dedent | Token::Eof) {
                 break;
             }
+            // Stop at ) which closes a parent context (e.g., closure inside fn call)
+            if matches!(self.peek_raw(), Some(RawToken::RParen)) {
+                break;
+            }
             stmts.push(self.parse_stmt()?);
         }
         Ok(stmts)
@@ -657,6 +699,10 @@ impl Parser {
         match self.peek_raw() {
             Some(RawToken::Let) => {
                 self.advance();
+                // Handle `let mut x`
+                if self.peek_raw() == Some(&RawToken::Mut) {
+                    self.advance(); // skip mut for now (we don't track mutability on locals yet)
+                }
                 let name = self.eat_ident()?;
                 let ty = if self.peek_raw() == Some(&RawToken::Colon) {
                     self.advance();
@@ -995,6 +1041,7 @@ impl Parser {
             Some(RawToken::If) => self.parse_if_expr(),
             Some(RawToken::Match) => self.parse_match_expr(),
             Some(RawToken::For) => self.parse_for_expr(),
+            Some(RawToken::Fn) => self.parse_closure_expr(),
             _ => Err(self.err(&format!("expected expression, got {:?}", self.peek()))),
         }
     }
@@ -1020,14 +1067,13 @@ impl Parser {
     }
 
     fn parse_struct_construction(&mut self, name: String) -> Result<Expr, ParseError> {
-        self.advance(); // consume Indent
+        self.consume_indent();
         let mut fields = vec![];
         loop {
             self.skip_newlines();
             if matches!(self.peek(), Token::Dedent | Token::Eof) {
                 break;
             }
-            // Stop if we see something that can't be a field name (e.g., RParen closing a parent call)
             if matches!(self.peek_raw(), Some(RawToken::RParen)) {
                 break;
             }
@@ -1036,9 +1082,7 @@ impl Parser {
             let value = self.parse_expr()?;
             fields.push((fname, value));
         }
-        if self.peek() == &Token::Dedent {
-            self.advance();
-        }
+        self.consume_dedent();
         Ok(Expr::Construct(name, fields))
     }
 
@@ -1183,6 +1227,44 @@ impl Parser {
         Ok(Expr::For(var, Box::new(iter), body, invariants))
     }
 
+    fn parse_closure_expr(&mut self) -> Result<Expr, ParseError> {
+        self.expect_raw(&RawToken::Fn)?;
+        self.expect_raw(&RawToken::LParen)?;
+        let params = self.parse_params()?;
+        self.expect_raw(&RawToken::RParen)?;
+
+        let _return_type = if self.peek_raw() == Some(&RawToken::Arrow) {
+            self.advance();
+            Some(self.parse_type_expr()?)
+        } else {
+            None
+        };
+
+        // Body: indented block
+        let mut body_stmts = vec![];
+        if self.peek() == &Token::Indent {
+            self.advance();
+            body_stmts = self.parse_body_stmts()?;
+            if self.peek() == &Token::Dedent {
+                self.advance();
+            }
+        } else {
+            // Single expression on same line
+            body_stmts.push(self.parse_stmt()?);
+        }
+
+        let body = if body_stmts.len() == 1 {
+            match body_stmts.into_iter().next().unwrap() {
+                Stmt::Expr(e) => e,
+                other => Expr::Block(vec![other]),
+            }
+        } else {
+            Expr::Block(body_stmts)
+        };
+
+        Ok(Expr::Closure(params, Box::new(body)))
+    }
+
     // ─── Pattern parsing ───
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
@@ -1318,7 +1400,13 @@ impl Parser {
                 Ok(TypeExpr::Func(param_types, Box::new(ret)))
             }
             _ => {
-                let name = self.eat_ident_or_keyword()?;
+                let mut name = self.eat_ident_or_keyword()?;
+                // Handle associated type paths: `Self.Item`
+                while self.peek_raw() == Some(&RawToken::Dot) {
+                    self.advance();
+                    let segment = self.eat_ident_or_keyword()?;
+                    name = format!("{}.{}", name, segment);
+                }
                 if self.peek_raw() == Some(&RawToken::Lt) {
                     self.advance();
                     let mut args = vec![];
@@ -1656,9 +1744,7 @@ impl Parser {
                         let ty = self.parse_type_expr()?;
                         associated_types.push((tname, ty));
                     }
-                    _ => {
-                        return Err(self.err("expected fn or type in impl body"));
-                    }
+                    _ => break,
                 }
             }
             if self.peek() == &Token::Dedent {
