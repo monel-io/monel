@@ -90,6 +90,17 @@ impl Parser {
         }
     }
 
+    fn skip_indented_block(&mut self) {
+        let mut depth = 1i32;
+        while depth > 0 && !self.at_eof() {
+            match self.peek() {
+                Token::Indent => { depth += 1; self.advance(); self.indent_depth += 1; }
+                Token::Dedent => { depth -= 1; self.advance(); self.indent_depth = self.indent_depth.saturating_sub(1); }
+                _ => { self.advance(); }
+            }
+        }
+    }
+
     fn consume_indent(&mut self) -> bool {
         if self.peek() == &Token::Indent {
             self.advance();
@@ -145,6 +156,23 @@ impl Parser {
         }
     }
 
+    fn eat_field_name(&mut self) -> Result<String, ParseError> {
+        match self.peek_raw().cloned() {
+            Some(RawToken::Ident(name)) => { self.advance(); Ok(name) }
+            Some(RawToken::Match) => { self.advance(); Ok("match".into()) }
+            Some(RawToken::Type) => { self.advance(); Ok("type".into()) }
+            Some(RawToken::Result_) => { self.advance(); Ok("Result".into()) }
+            Some(RawToken::Some_) => { self.advance(); Ok("Some".into()) }
+            Some(RawToken::None_) => { self.advance(); Ok("None".into()) }
+            Some(RawToken::Ok_) => { self.advance(); Ok("Ok".into()) }
+            Some(RawToken::Err_) => { self.advance(); Ok("Err".into()) }
+            Some(RawToken::SelfUpper) => { self.advance(); Ok("Self".into()) }
+            Some(RawToken::Old) => { self.advance(); Ok("old".into()) }
+            Some(RawToken::Never) => { self.advance(); Ok("never".into()) }
+            _ => self.eat_ident(),
+        }
+    }
+
     fn err(&self, msg: &str) -> ParseError {
         let (line, col) = self.current_loc();
         ParseError {
@@ -186,7 +214,7 @@ impl Parser {
                 },
                 Some(RawToken::Fn | RawToken::Pub | RawToken::Type | RawToken::Const
                      | RawToken::Trait | RawToken::Impl | RawToken::Async
-                     | RawToken::StateMachine) => {
+                     | RawToken::StateMachine | RawToken::Layout | RawToken::Interaction) => {
                     match self.parse_decl() {
                         Ok(decl) => declarations.push(decl),
                         Err(e) => {
@@ -254,7 +282,16 @@ impl Parser {
         if self.peek_raw() == Some(&RawToken::LBrace) {
             self.advance();
             loop {
-                names.push(self.eat_ident_or_keyword()?);
+                let name = self.eat_ident_or_keyword()?;
+                // Handle `Name as Alias`
+                if let Some(RawToken::Ident(kw)) = self.peek_raw() {
+                    if kw == "as" {
+                        self.advance();
+                        let _alias = self.eat_ident_or_keyword()?;
+                        // Store aliased name (for now just use original)
+                    }
+                }
+                names.push(name);
                 if self.peek_raw() == Some(&RawToken::Comma) {
                     self.advance();
                 } else {
@@ -284,6 +321,21 @@ impl Parser {
             Some(RawToken::Trait) => Ok(Decl::Trait(self.parse_trait_decl(vis)?)),
             Some(RawToken::Impl) => Ok(Decl::Impl(self.parse_impl_block()?)),
             Some(RawToken::StateMachine) => Ok(Decl::StateMachine(self.parse_state_machine()?)),
+            Some(RawToken::Layout | RawToken::Interaction) => {
+                self.advance();
+                let _name = self.eat_ident()?;
+                if self.consume_indent() {
+                    self.skip_indented_block();
+                }
+                Ok(Decl::StateMachine(StateMachineDecl {
+                    name: _name,
+                    doc: None,
+                    states: vec![],
+                    transitions: vec![],
+                    initial: String::new(),
+                    terminal: vec![],
+                }))
+            }
             _ => Err(self.err(&format!("expected declaration, got {:?}", self.peek()))),
         }
     }
@@ -509,9 +561,14 @@ impl Parser {
                 let expr = self.parse_expr()?;
                 Ok(EnsuresClause::Err(variant, expr))
             }
-            // Also handle `err(Variant) =>` where `err` is lowercase ident
             Some(RawToken::Ident(name)) if name == "err" => {
                 self.advance();
+                // Bare `err =>` without variant
+                if self.peek_raw() == Some(&RawToken::FatArrow) {
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    return Ok(EnsuresClause::Err("_".to_string(), expr));
+                }
                 self.expect_raw(&RawToken::LParen)?;
                 let variant = self.eat_ident_or_keyword()?;
                 if self.peek_raw() == Some(&RawToken::LParen) {
@@ -530,7 +587,6 @@ impl Parser {
             }
             Some(RawToken::Result_) => {
                 self.advance();
-                // `result is Some(s) => ...`
                 if let Some(RawToken::Ident(name)) = self.peek_raw().cloned() {
                     if name == "is" {
                         self.advance();
@@ -540,10 +596,19 @@ impl Parser {
                         return Ok(EnsuresClause::ResultIs(pattern, expr));
                     }
                 }
-                // `result == expr` or similar
                 let left = Expr::Ident("result".to_string());
                 let full_expr = self.parse_expr_continuation(left)?;
-                Ok(EnsuresClause::Always(full_expr))
+                if self.peek_raw() == Some(&RawToken::FatArrow) {
+                    self.advance();
+                    let postcondition = self.parse_expr()?;
+                    Ok(EnsuresClause::Always(Expr::BinOp(
+                        Box::new(full_expr),
+                        BinOp::And,
+                        Box::new(postcondition),
+                    )))
+                } else {
+                    Ok(EnsuresClause::Always(full_expr))
+                }
             }
             _ => {
                 let expr = self.parse_expr()?;
@@ -572,7 +637,11 @@ impl Parser {
             if self.peek_raw() == Some(&RawToken::RBracket) {
                 break;
             }
-            let category = self.eat_ident_or_keyword()?;
+            let category = match self.peek_raw() {
+                Some(RawToken::Unsafe) => { self.advance(); "unsafe".to_string() }
+                Some(RawToken::Async) => { self.advance(); "async".to_string() }
+                _ => self.eat_ident_or_keyword()?,
+            };
             if self.peek_raw() == Some(&RawToken::Dot) {
                 self.advance();
                 let operation = self.eat_ident()?;
@@ -699,11 +768,10 @@ impl Parser {
         match self.peek_raw() {
             Some(RawToken::Let) => {
                 self.advance();
-                // Handle `let mut x`
                 if self.peek_raw() == Some(&RawToken::Mut) {
-                    self.advance(); // skip mut for now (we don't track mutability on locals yet)
+                    self.advance();
                 }
-                let name = self.eat_ident()?;
+                let name = self.eat_field_name()?;
                 let ty = if self.peek_raw() == Some(&RawToken::Colon) {
                     self.advance();
                     Some(self.parse_type_expr()?)
@@ -897,7 +965,7 @@ impl Parser {
             match self.peek_raw() {
                 Some(RawToken::Dot) => {
                     self.advance();
-                    let field = self.eat_ident_or_keyword()?;
+                    let field = self.eat_field_name()?;
                     if self.peek_raw() == Some(&RawToken::LParen) {
                         self.advance();
                         let args = self.parse_arg_list()?;
@@ -949,6 +1017,10 @@ impl Parser {
             Some(RawToken::Float(f)) => {
                 self.advance();
                 Ok(Expr::Float(f))
+            }
+            Some(RawToken::Char(c)) => {
+                self.advance();
+                Ok(Expr::String(vec![StringPart::Literal(c.to_string())]))
             }
             Some(RawToken::String_(s)) => {
                 self.advance();
@@ -1041,7 +1113,22 @@ impl Parser {
             Some(RawToken::If) => self.parse_if_expr(),
             Some(RawToken::Match) => self.parse_match_expr(),
             Some(RawToken::For) => self.parse_for_expr(),
+            Some(RawToken::While) => self.parse_while_expr(),
+            Some(RawToken::Loop) => self.parse_loop_expr(),
             Some(RawToken::Fn) => self.parse_closure_expr(),
+            Some(RawToken::Break) => { self.advance(); Ok(Expr::Ident("break".into())) }
+            Some(RawToken::Continue) => { self.advance(); Ok(Expr::Ident("continue".into())) }
+            Some(RawToken::Unsafe) => {
+                self.advance();
+                if self.consume_indent() {
+                    let stmts = self.parse_body_stmts()?;
+                    self.consume_dedent();
+                    Ok(Expr::Block(stmts))
+                } else {
+                    let expr = self.parse_expr()?;
+                    Ok(expr)
+                }
+            }
             _ => Err(self.err(&format!("expected expression, got {:?}", self.peek()))),
         }
     }
@@ -1092,11 +1179,11 @@ impl Parser {
             return Ok(args);
         }
         loop {
-            // Check for closure syntax: `ident => expr`
             if let Some(RawToken::Ident(name)) = self.peek_raw().cloned() {
                 let saved = self.pos;
                 self.advance();
                 if self.peek_raw() == Some(&RawToken::FatArrow) {
+                    // Closure: `ident => expr`
                     self.advance();
                     let body = self.parse_expr()?;
                     let param = Param {
@@ -1104,8 +1191,13 @@ impl Parser {
                         ty: TypeExpr::Named("_".to_string()),
                     };
                     args.push(Expr::Closure(vec![param], Box::new(body)));
+                } else if self.peek_raw() == Some(&RawToken::Colon) {
+                    // Named argument: `key: value`
+                    self.advance();
+                    let value = self.parse_expr()?;
+                    // Store as a construct field for now (name: value)
+                    args.push(Expr::Construct(name, vec![("value".into(), value)]));
                 } else {
-                    // Not a closure, restore and parse normally
                     self.pos = saved;
                     args.push(self.parse_expr()?);
                 }
@@ -1177,6 +1269,12 @@ impl Parser {
                 if self.peek_raw() == Some(&RawToken::Pipe) {
                     self.advance();
                     let pattern = self.parse_pattern()?;
+                    // Pattern guard: `| pattern if condition =>`
+                    if self.peek_raw() == Some(&RawToken::If) {
+                        self.advance();
+                        let _guard = self.parse_expr()?;
+                        // TODO: store guard in MatchArm
+                    }
                     self.expect_raw(&RawToken::FatArrow)?;
                     let mut body = vec![];
                     if self.peek() == &Token::Indent {
@@ -1225,6 +1323,32 @@ impl Parser {
         }
 
         Ok(Expr::For(var, Box::new(iter), body, invariants))
+    }
+
+    fn parse_while_expr(&mut self) -> Result<Expr, ParseError> {
+        self.expect_raw(&RawToken::While)?;
+        let cond = self.parse_expr()?;
+        let mut body = vec![];
+        if self.consume_indent() {
+            body = self.parse_body_stmts()?;
+            self.consume_dedent();
+        }
+        Ok(Expr::Block(vec![Stmt::Expr(Expr::For(
+            "_while".into(),
+            Box::new(cond),
+            body,
+            vec![],
+        ))]))
+    }
+
+    fn parse_loop_expr(&mut self) -> Result<Expr, ParseError> {
+        self.expect_raw(&RawToken::Loop)?;
+        let mut body = vec![];
+        if self.consume_indent() {
+            body = self.parse_body_stmts()?;
+            self.consume_dedent();
+        }
+        Ok(Expr::Block(body))
     }
 
     fn parse_closure_expr(&mut self) -> Result<Expr, ParseError> {
@@ -1286,6 +1410,28 @@ impl Parser {
                     Ok(Pattern::Constructor("Some".to_string(), vec![inner]))
                 } else {
                     Ok(Pattern::Ident("Some".to_string()))
+                }
+            }
+            Some(RawToken::Ok_) => {
+                self.advance();
+                if self.peek_raw() == Some(&RawToken::LParen) {
+                    self.advance();
+                    let inner = self.parse_pattern()?;
+                    self.expect_raw(&RawToken::RParen)?;
+                    Ok(Pattern::Constructor("Ok".to_string(), vec![inner]))
+                } else {
+                    Ok(Pattern::Ident("Ok".to_string()))
+                }
+            }
+            Some(RawToken::Err_) => {
+                self.advance();
+                if self.peek_raw() == Some(&RawToken::LParen) {
+                    self.advance();
+                    let inner = self.parse_pattern()?;
+                    self.expect_raw(&RawToken::RParen)?;
+                    Ok(Pattern::Constructor("Err".to_string(), vec![inner]))
+                } else {
+                    Ok(Pattern::Ident("Err".to_string()))
                 }
             }
             Some(RawToken::Ident(name)) => {
@@ -1768,26 +1914,107 @@ impl Parser {
         self.expect_raw(&RawToken::StateMachine)?;
         let name = self.eat_ident()?;
 
-        // Skip the indented body for now
-        if self.peek() == &Token::Indent {
-            let mut depth = 1;
+        // Optional `for Type.field`
+        if self.peek_raw() == Some(&RawToken::For) {
             self.advance();
-            while depth > 0 && !self.at_eof() {
-                match self.peek() {
-                    Token::Indent => { depth += 1; self.advance(); }
-                    Token::Dedent => { depth -= 1; self.advance(); }
-                    _ => { self.advance(); }
+            let _target = self.parse_type_expr()?;
+        }
+
+        let mut doc = None;
+        let mut states = vec![];
+        let mut transitions = vec![];
+        let mut initial = String::new();
+        let mut terminal = vec![];
+
+        if self.consume_indent() {
+            loop {
+                self.skip_newlines();
+                if matches!(self.peek(), Token::Dedent | Token::Eof) {
+                    break;
+                }
+                match self.peek_raw() {
+                    Some(RawToken::Doc) => {
+                        self.advance();
+                        if let Some(RawToken::String_(s)) = self.peek_raw().cloned() {
+                            self.advance();
+                            doc = Some(s);
+                        }
+                    }
+                    Some(RawToken::States) => {
+                        self.advance();
+                        if self.peek_raw() == Some(&RawToken::LBracket) {
+                            self.advance();
+                            loop {
+                                if self.peek_raw() == Some(&RawToken::RBracket) { break; }
+                                states.push(self.eat_ident_or_keyword()?);
+                                if self.peek_raw() == Some(&RawToken::Comma) {
+                                    self.advance();
+                                } else { break; }
+                            }
+                            self.expect_raw(&RawToken::RBracket)?;
+                        } else if self.consume_indent() {
+                            loop {
+                                self.skip_newlines();
+                                if matches!(self.peek(), Token::Dedent | Token::Eof) { break; }
+                                states.push(self.eat_ident_or_keyword()?);
+                            }
+                            self.consume_dedent();
+                        }
+                    }
+                    Some(RawToken::Transitions) => {
+                        self.advance();
+                        if self.consume_indent() {
+                            loop {
+                                self.skip_newlines();
+                                if matches!(self.peek(), Token::Dedent | Token::Eof) { break; }
+                                let from = self.eat_ident_or_keyword()?;
+                                // `--event-->` tokenized as Minus Minus Ident Minus Arrow
+                                self.expect_raw(&RawToken::Minus)?;
+                                self.expect_raw(&RawToken::Minus)?;
+                                let event = self.eat_ident()?;
+                                self.expect_raw(&RawToken::Minus)?;
+                                self.expect_raw(&RawToken::Arrow)?;
+                                let to = self.eat_ident_or_keyword()?;
+                                transitions.push(TransitionDecl { from, event, to });
+                            }
+                            self.consume_dedent();
+                        }
+                    }
+                    Some(RawToken::Initial) => {
+                        self.advance();
+                        initial = self.eat_ident_or_keyword()?;
+                    }
+                    Some(RawToken::Terminal) => {
+                        self.advance();
+                        if self.peek_raw() == Some(&RawToken::LBracket) {
+                            self.advance();
+                            loop {
+                                if self.peek_raw() == Some(&RawToken::RBracket) { break; }
+                                terminal.push(self.eat_ident_or_keyword()?);
+                                if self.peek_raw() == Some(&RawToken::Comma) {
+                                    self.advance();
+                                } else { break; }
+                            }
+                            self.expect_raw(&RawToken::RBracket)?;
+                        } else {
+                            terminal.push(self.eat_ident_or_keyword()?);
+                        }
+                    }
+                    _ => {
+                        self.advance();
+                    }
                 }
             }
+            self.consume_dedent();
         }
 
         Ok(StateMachineDecl {
             name,
-            doc: None,
-            states: vec![],
-            transitions: vec![],
-            initial: String::new(),
-            terminal: vec![],
+            doc,
+            states,
+            transitions,
+            initial,
+            terminal,
         })
     }
 }

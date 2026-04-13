@@ -12,3 +12,10 @@ All spec and documentation text must use a neutral, technical tone:
 - Don't prescribe authorship — Monel works with or without AI agents
 - Don't repeat what context already says (title says "Specification" — body doesn't restate it)
 - Test: would a skeptical senior engineer roll their eyes? If yes, rewrite as plain fact.
+- No emdashes in spec or documentation. Use colons, periods, commas, or parentheses instead.
+
+## Code Style
+
+- No comments that restate what the code does. Use descriptive method and variable names instead (function = verb, variable = noun).
+- Only add comments for *why*, not *what*. If a comment explains what the code does, rename the code.
+- Prefer `consume_indent()` over `self.advance(); // consume Indent`.

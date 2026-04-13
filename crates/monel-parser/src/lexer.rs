@@ -199,6 +199,13 @@ pub enum RawToken {
     })]
     String_(String),
 
+    // Character literal: 'a', ' '
+    #[regex(r"'[^']'", |lex| {
+        let s = lex.slice();
+        Some(s.chars().nth(1).unwrap())
+    })]
+    Char(char),
+
     // Identifiers (must come after keywords so keywords take priority)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
