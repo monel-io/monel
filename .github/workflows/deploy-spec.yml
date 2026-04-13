@@ -26,7 +26,9 @@ jobs:
           mdbook-version: 'latest'
 
       - name: Install mdbook-mermaid
-        run: cargo install mdbook-mermaid
+        run: |
+          curl -sSL https://github.com/badboy/mdbook-mermaid/releases/latest/download/mdbook-mermaid-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          mv mdbook-mermaid /usr/local/bin/
 
       - name: Build spec
         run: mdbook build
