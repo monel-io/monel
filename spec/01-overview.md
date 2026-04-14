@@ -7,13 +7,7 @@
 
 ---
 
-## 1.1 Purpose of This Document
-
-This chapter defines the philosophy, design principles, and architectural structure of the Monel programming language. It establishes the conceptual foundation upon which the remaining specification chapters build. Implementors, tool authors, and language users should treat this chapter as the authoritative source for understanding Monel's design rationale and system boundaries.
-
----
-
-## 1.2 Brand and Artifacts
+## 1.1 Brand and Artifacts
 
 | Artifact | Value |
 |---|---|
@@ -31,27 +25,9 @@ A Monel project is a directory containing a `monel.project` file. All paths in t
 
 ---
 
-## 1.3 The Problem
+## 1.2 Model
 
-Programming languages optimize for the human-as-author workflow: the developer writes code, and the compiler checks it.
-
-As AI agents take on more code generation, review becomes a larger part of the development workflow. Several problems emerge when the reviewer cannot easily verify whether code matches its intended behavior:
-
-1. **Rubber-stamping.** Code that is syntactically valid and passes tests may be approved without deep understanding. Defects can accumulate silently.
-
-2. **Tracing burden.** Reviewers may need to reverse-engineer intent from code, reading hundreds of lines to answer "does this do what I wanted?" This scales poorly.
-
-3. **Specification drift.** When intent lives only in natural language (comments, tickets, chat messages), there is no mechanism to detect divergence between specification and implementation.
-
-4. **Auditability.** Without a structured link between what was requested and what was produced, compliance and security review rely on manual inspection.
-
-These problems share a root cause: mainstream languages conflate *what the program should do* with *how it does it* into a single artifact.
-
----
-
-## 1.4 The Core Insight
-
-Every function in Monel declares **contracts** alongside its **implementation**, and the compiler verifies the relationship between them. Verification is deterministic, with no LLM in the pipeline.
+A Monel function declares contracts alongside its implementation in the same `.mn` file. The compiler verifies the relationship between them.
 
 ```mermaid
 graph LR
@@ -69,122 +45,17 @@ graph LR
     P -->|"✗ mismatch"| E["Compile Error"]
 ```
 
-- **Contracts** declare what a function must do: preconditions (`requires:`), postconditions (`ensures:`), type invariants (`invariant:`), side effects (`effects:`), panic freedom (`panics: never`). Contracts are the specification layer.
+- **Contracts**: `requires:`, `ensures:`, `invariant:`, `effects:`, `panics: never`
+- **Implementation**: algorithms, data structures, control flow
+- **Verification**: type checking, effect inference, SMT contract proof (Z3), borrow checking
 
-- **Implementation** is how the function does it: algorithms, data structures, control flow. Contracts and code live in the same `.mn` file, co-located for readability.
+An implementation that violates its contracts is a compile error. A declared effect absent from the code is a warning. An undeclared effect in the code is an error. All verification is deterministic; no LLM in the pipeline.
 
-- **Verification**: the compiler checks that implementation satisfies its contracts. Effect inference verifies declared effects. SMT solving (Z3) proves `requires:`/`ensures:` clauses. Type checking and borrow checking enforce safety. All verification is deterministic and reproducible.
-
-A function whose implementation violates its contracts is a compilation error. A declared effect not present in the code is a warning. An undeclared effect in the code is an error. All of this happens at compile time with no external dependencies.
-
-Because the compiler verifies contracts, reviewers can focus on the contracts rather than tracing through implementation line by line.
-
-### 1.4.1 Competitive Landscape and Positioning
-
-The problem Monel addresses (verifying that code does what a specification says) is approached from several directions today.
-
-#### Spec-Driven Development Tools (OpenSpec, GitHub Spec Kit, Kiro, Tessl)
-
-The SDD movement has produced 30+ tools with over 100k combined GitHub stars. OpenSpec (31k stars, YC-backed), GitHub Spec Kit (77k stars), AWS Kiro, and Tessl all organize specifications as markdown documents that AI coding agents are instructed to follow.
-
-**What they do:** Structure how AI agents receive and process specifications. Create planning workflows (propose, apply, archive). Generate task breakdowns from specs.
-
-**What they do not do:** Verify that the resulting code matches the specification. Martin Fowler's team confirmed this directly: agents frequently ignored instructions and created duplicates despite elaborate spec documentation. The Fowler analysis identified a risk of "false sense of control" despite elaborate workflows.
-
-These tools validate the demand (developers want spec-first AI workflows) but they share a fundamental limitation: **enforcement is by convention, not by compiler**. An agent can ignore a spec, generate code that contradicts it, or silently drift from it over time. No tool in the SDD stack detects this divergence.
-
-#### Design-by-Contract Libraries (deal, icontract, Rust `contracts`, Prusti)
-
-Languages like Python and Rust have libraries that add preconditions, postconditions, and invariants to functions. Python's `deal` (875 stars) includes a static linter. Python's `icontract` integrates with CrossHair for SMT-based symbolic verification. Rust's `contracts` crate (29 stars) provides `#[requires]`/`#[ensures]` macros. Prusti (1.6k stars) verifies Rust code against pre/postconditions via SMT, including `old()` references and panic freedom proofs.
-
-Rust is adding official contract support (MCP-759) to annotate unsafe stdlib functions, but only for `unsafe` code, not general specification enforcement.
-
-**What they do:** Add pre/postconditions to existing languages. Range from runtime assertions (deal, contracts crate) to full SMT verification (Prusti, icontract+CrossHair).
-
-**What they do not do:** Track side effects or provide an integrated effect system. Contract annotations are bolted onto an existing language's syntax. They work within the host language's type system and toolchain rather than co-designing both together.
-
-#### Formal Verification Languages and Tools (SPARK Ada, Dafny, Verus)
-
-SPARK Ada is the most established production formal verification system, used in avionics, rail, and defense since 2014. It proves absence of runtime errors, verifies pre/postconditions via SMT (Z3/CVC5), supports `old()` references in postconditions, and since SPARK 2024 provides per-exception postconditions via `Exceptional_Cases`. SPARK is not a separate language. It is a formally verifiable subset of Ada with an industrial-grade toolchain (GNAT/GNATprove).
-
-Dafny (3.3k stars, Microsoft Research) and Verus (2.4k stars) provide SMT-based static verification. Verus works on a subset of Rust. Dafny compiles to C#, Go, Python, Java. Both use Z3 for proof.
-
-**What they do:** Prove that code satisfies formal specifications for all valid inputs. SPARK has decades of production deployment. Dafny and Verus are newer but have strong academic backing.
-
-**What they do not do:** Integrate effect tracking. SPARK verifies contracts and absence of runtime errors but does not have a first-class effect system. Dafny and Verus require heavy annotation (proof obligations, ghost code). Verus supports only a Rust subset. Martin Kleppmann's influential thesis (Dec 2025) argues AI will eventually make formal verification mainstream, but adoption outside safety-critical domains remains limited.
-
-#### Effect Systems (Effect-TS, Koka, Effekt)
-
-Effect-TS (13.6k stars) adds algebraic effects to TypeScript. Koka (3.8k stars, Microsoft Research) is a research language with first-class effects. Effekt is a research language from academia.
-
-**What they do:** Track side effects at the type level. Koka has the most complete effect system of any language.
-
-**What they do not do:** Work with existing mainstream languages. Effect-TS requires rewriting all code in its monadic style. Koka is explicitly "not ready for production use." Rust closed its effect system RFC (#1631) with no follow-up. Nobody has successfully added a real effect system to an existing language as a tool or library.
-
-#### AI Code Review Tools (Qodo, Augment Code Intent)
-
-Qodo (formerly CodiumAI) and Augment Code Intent use LLMs to review code, including checking against requirements. Augment's "Intent" product uses multi-agent orchestration with a verifier agent.
-
-**What they do:** LLM-based probabilistic code review. Check code against specs using AI judgment.
-
-**What they do not do:** Provide deterministic verification. An LLM reviewer can miss issues, hallucinate passes, or produce different results on different runs.
-
-#### Where Monel Sits
-
-```mermaid
-quadrantChart
-    title Verification Depth vs Adoption Barrier
-    x-axis Low Adoption Barrier --> High Adoption Barrier
-    y-axis Shallow Verification --> Deep Verification
-    quadrant-1 Powerful but niche
-    quadrant-2 The gap
-    quadrant-3 Easy but shallow
-    quadrant-4 Hard and shallow
-    OpenSpec: [0.2, 0.1]
-    Spec Kit: [0.2, 0.1]
-    SPARK Ada: [0.65, 0.95]
-    Dafny: [0.85, 0.95]
-    Verus: [0.75, 0.9]
-    Prusti: [0.55, 0.75]
-    deal/icontract: [0.3, 0.35]
-    Effect-TS: [0.55, 0.4]
-    Koka: [0.7, 0.5]
-    Monel: [0.5, 0.7]
-```
-
-The SDD tools occupy the bottom-left: easy to adopt, no real verification. Formal verification tools occupy the top-right: deep verification, high barrier. Prusti occupies the middle: strong verification on existing Rust, but no effect tracking and limited to Rust's syntax. Monel targets a similar depth with lower annotation burden by co-designing the language and verification system together, and adds a first-class effect system that no existing tool provides.
-
-#### Why a Language, Not a Tool
-
-Three capabilities suggest a language rather than a tool:
-
-1. **Effect tracking needs compiler integration.** Rust closed its effect system RFC. Effect-TS requires rewriting all code in monadic style. Adding effects to an existing language as a library has not been demonstrated successfully.
-
-2. **Spec-implementation correspondence needs compilation constraints.** A linter can check annotations, but enforcing that every public function has a matching specification, that signatures agree, and that declared effects cover actual effects requires compiler-level enforcement.
-
-3. **Inline contracts are a syntax decision.** `requires:`/`ensures:` with SMT verification, `effects:` with inference checking, `panics: never` with static proof. These need to be part of the function declaration syntax, not bolted on as annotations.
-
-The closest related projects are SPARK Ada (production formal verification with per-exception postconditions), Prusti (SMT verification for Rust with `old()` and panic freedom), and Verus (proof-oriented Rust subset). These verify properties of existing language code. Monel's bet is that co-designing the language, contract system, and effect system together, rather than bolting verification onto an existing language, produces lower annotation burden and enables optimizations (effect-aware codegen, contract-driven test generation) that external tools cannot perform.
-
-#### Comparison Table
-
-| | SDD Tools | DbC Libraries | Formal Verification (SPARK, Dafny, Verus) | Monel |
-|---|---|---|---|---|
-| **Spec format** | Markdown | Decorators/macros | Proof annotations / aspects | Inline contracts |
-| **Enforcement** | Convention | Runtime or static (varies) | Static proof | Compiler-verified contracts |
-| **Effect tracking** | None | `@pure` only (deal) | None | First-class effect system |
-| **Contract verification** | None | Runtime (deal) to SMT (Prusti) | Full SMT proof | SMT proof |
-| **Per-error postconditions** | No | No | SPARK (since 2024) | Yes |
-| **Annotation burden** | Low | Medium | High | Low to Medium |
-| **Works with existing languages** | Yes | Yes | Yes (SPARK/Ada, Verus/Rust, Prusti/Rust) | No (new language) |
-| **Production track record** | Varied | Limited | SPARK: decades in safety-critical | None |
-| **AI-agent optimized** | Workflow only | No | No | Query oracle, context gathering, edit-compatible errors |
-
-Convention-based SDD tools are Monel's natural on-ramp: teams already using spec-first workflows are the ideal early adopters.
+For a comparison with SPARK Ada, Dafny, Verus, Prusti, and SDD tools see the [claims map](claims.md#prior-art-honesty).
 
 ---
 
-## 1.5 Target Domain
+## 1.3 Target Domain
 
 Monel is a general-purpose systems programming language. Its performance target is parity with Rust (zero-cost abstractions, no garbage collector, deterministic resource management). Its ergonomics target is parity with Python (minimal boilerplate, type inference within functions, indentation-based scope, readable syntax).
 
@@ -202,7 +73,7 @@ These projects are chosen because they demand systems-level performance, have ri
 
 ---
 
-## 1.6 Architecture
+## 1.4 Architecture
 
 Monel has two layers: **source** and **compiler**. Contracts and implementation live together in `.mn` files.
 
@@ -236,7 +107,7 @@ Monel has two layers: **source** and **compiler**. Contracts and implementation 
 
 ---
 
-## 1.7 The Four-Stage Pipeline
+## 1.5 Four-Stage Pipeline
 
 The Monel compiler (`monelc`) processes a project through four sequential stages. Each stage may produce diagnostics. Compilation halts at the first stage that produces an error.
 
@@ -454,7 +325,7 @@ The build system embeds these artifacts in each binary, so auditors can trace an
 
 ---
 
-## 1.8 Design Principles
+## 1.6 Design Principles
 
 The following principles govern Monel's syntax and semantics. They are binding constraints on the language design. When a design decision could go multiple ways, these principles determine the outcome.
 
@@ -517,7 +388,7 @@ Monel has no exceptions. All fallible operations return `Result<T, E>`. Error ty
 
 ---
 
-## 1.9 The Key Workflow
+## 1.7 Workflow
 
 ### Step 1: Write Contracts
 
@@ -576,89 +447,8 @@ The reviewer reads contracts, not implementation. If `ensures: ok => result.user
 
 ---
 
-## 1.10 Roles
 
-Monel's three-layer architecture enables different team roles to interact with the codebase through different file types. Each role has a primary artifact they author and review.
-
-### Product Manager
-
-**Primary artifact:** Contracts in `.mn` files (with AI agent assistance).
-
-**Activities:**
-- Describe requirements in natural language; AI agent generates formal contracts
-- Review contracts (`ensures:`, error variants, effects) to confirm they match product requirements
-- Read verification reports to confirm implementation satisfies contracts
-
-### Engineer
-
-**Primary artifact:** `.mn`, implementation files.
-
-**Activities:**
-- Review LLM-generated implementation for correctness
-- Write implementation manually when needed
-- Write `requires:`/`ensures:` contracts for critical code paths
-- Debug parity failures
-- Optimize performance-critical functions
-
-### Architect
-
-**Primary artifact:** `monel.policy`, `monel.team`, project-wide policy and team configuration.
-
-**Activities:**
-- Define effect budgets (which modules may use which effects)
-- Define module boundaries and visibility rules
-- Configure verification levels per module
-- Define coding standards enforced by the compiler
-
-**`monel.policy` example:**
-```
-[effects]
-src/auth/* = [Db.read, Db.write, Log.write, Net.connect]
-src/ui/*   = [Fs.read, Log.write]
-src/core/* = []
-
-[parity]
-src/auth/* = "strict"
-src/ui/*   = "lightweight"
-
-[modules]
-src/auth/internal/* = { visibility = "auth" }
-```
-
-### Designer
-
-**Primary artifact:** Layout and interaction declarations in `.mn` files.
-
-**Activities:**
-- Define layout declarations: regions, proportions, focus order, responsive rules
-- Define interaction declarations: state machines for UI flows, accessibility requirements
-- Define theme declarations: color palettes, contrast requirements, spacing scales
-- Review generated UI code through parity reports
-
-### Security Engineer
-
-**Primary artifact:** Contracts with `requires:`/`ensures:`/`panics: never` on security-critical functions.
-
-**Activities:**
-- Write `requires:` and `ensures:` contracts for authentication, authorization, and cryptographic code
-- Define `panics: never` constraints for security-critical paths
-- Write `invariant:` declarations for security-critical types
-- Configure effect policies that restrict network and filesystem access
-- Review parity reports for security-critical modules
-
-### SRE / Operations
-
-**Primary artifact:** Effect policies, deploy configuration, operational constraints.
-
-**Activities:**
-- Define deploy configuration: replicas, health checks, circuit breakers, resource limits
-- Define SLA requirements as verifiable constraints
-- Define effects budgets for operational contexts
-- Review parity reports for operational correctness
-
----
-
-## 1.11 Compiler as Query Oracle
+## 1.8 Compiler as Query Oracle
 
 Beyond compilation, the Monel compiler serves as a query oracle for AI coding tools. The `monel query` and `monel context` commands provide structured information about the codebase that LLMs need to generate correct code.
 
@@ -699,7 +489,7 @@ This updates all affected files, then re-verifies contracts across all changes.
 
 ---
 
-## 1.12 Summary of Invariants
+## 1.9 Invariants
 
 The following invariants hold for every valid Monel project:
 

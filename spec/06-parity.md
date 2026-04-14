@@ -1,12 +1,6 @@
 # 6. Verification
 
-This chapter specifies how the Monel compiler verifies that implementation code satisfies its declared contracts.
-
----
-
-## 6.1 Overview
-
-Contracts and implementation live in the same `.mn` file. The compiler verifies that every function's implementation satisfies its declared `requires:`, `ensures:`, `effects:`, `invariant:`, and `panics: never` contracts. All verification is deterministic and reproducible, with no LLM in the pipeline.
+The compiler verifies that every function's implementation satisfies its declared `requires:`, `ensures:`, `effects:`, `invariant:`, and `panics: never` contracts. All verification is deterministic and reproducible, with no LLM in the pipeline.
 
 ```mermaid
 graph LR
@@ -33,7 +27,7 @@ The compiler verifies five kinds of contracts:
 
 ---
 
-## 6.2 The Four-Stage Compiler Pipeline
+## 6.1 The Four-Stage Compiler Pipeline
 
 The Monel compiler (`monelc`) processes code through four stages:
 
@@ -84,7 +78,7 @@ The verification manifest enables downstream tools to confirm that contracts wer
 
 ---
 
-## 6.3 Preconditions: `requires:`
+## 6.2 Preconditions: `requires:`
 
 A `requires:` clause declares a precondition that must hold at every call site.
 
@@ -116,7 +110,7 @@ error[V0101]: precondition `arr.is_sorted()` not proven at call site
 
 ---
 
-## 6.4 Postconditions: `ensures:`
+## 6.3 Postconditions: `ensures:`
 
 An `ensures:` clause declares a postcondition that must hold at every return point.
 
@@ -132,7 +126,7 @@ fn sort(arr: &mut Vec<Int>)
 
 The compiler generates an SMT assertion that, at every return point of the function, the postconditions hold. `old(expr)` refers to the value of `expr` at function entry.
 
-### 6.4.1 Per-Error-Variant Postconditions
+### 6.3.1 Per-Error-Variant Postconditions
 
 Functions returning `Result<T, E>` can specify postconditions per error variant. The compiler verifies each error path separately.
 
@@ -160,7 +154,7 @@ The `ok =>` postcondition applies to success paths. Each `err(Variant) =>` postc
 
 ---
 
-## 6.5 Invariants: `invariant:`
+## 6.4 Invariants: `invariant:`
 
 A type can declare invariants that must hold after every mutation.
 
@@ -196,7 +190,7 @@ error[V0103]: invariant `self.items.len() <= self.capacity` not maintained
 
 ---
 
-## 6.6 Panic Freedom: `panics: never`
+## 6.5 Panic Freedom: `panics: never`
 
 A function annotated with `panics: never` must be proven free of all panic paths.
 
@@ -231,7 +225,7 @@ error[V0104]: possible panic in `panics: never` function
 
 ---
 
-## 6.7 Refinement Type Verification
+## 6.6 Refinement Type Verification
 
 Refinement types attach predicates to base types. The compiler verifies that every assignment to a refinement type satisfies the predicate.
 
@@ -261,11 +255,11 @@ error[V0201]: refinement predicate not satisfied
 
 ---
 
-## 6.8 State Machine Verification
+## 6.7 State Machine Verification
 
 `.mn` files can declare state machines. The compiler verifies that implementation code paths correspond to declared transitions.
 
-### 6.8.1 State Machine Declaration
+### 6.7.1 State Machine Declaration
 
 ```
 state_machine OrderLifecycle
@@ -302,7 +296,7 @@ stateDiagram-v2
     Cancelled --> [*]
 ```
 
-### 6.8.2 Implementation
+### 6.7.2 Implementation
 
 The implementation represents states as an enum and transitions as functions:
 
@@ -327,7 +321,7 @@ fn validate_order(order: &mut Order) -> Result<Unit, OrderError>
   Ok(())
 ```
 
-### 6.8.3 State Machine Checks
+### 6.7.3 State Machine Checks
 
 | Check | Rule | Error if violated |
 |-------|------|-------------------|
@@ -345,11 +339,11 @@ Transition correctness is verified by analyzing the control flow graph of each t
 
 ---
 
-## 6.9 Layout and Interaction Verification
+## 6.8 Layout and Interaction Verification
 
 For UI-related modules, `.mn` files can declare layouts and interactions. The compiler verifies these against the implementation.
 
-### 6.9.1 Layout Verification
+### 6.8.1 Layout Verification
 
 ```
 layout MainView
@@ -372,7 +366,7 @@ Layout checks:
 | Min size satisfiability | Min sizes are satisfiable given the percentage constraints | `V0603: min sizes unsatisfiable` |
 | Custom constraints | Declared constraints are satisfiable | `V0604: layout constraint unsatisfiable` |
 
-### 6.9.2 Interaction Verification
+### 6.8.2 Interaction Verification
 
 ```
 interaction SearchFlow
@@ -405,7 +399,7 @@ Interaction checks:
 
 ---
 
-## 6.10 Verification Coverage
+## 6.9 Verification Coverage
 
 The compiler tracks the verification status of every public function. Each function is classified into one of three categories:
 
@@ -417,7 +411,7 @@ The compiler tracks the verification status of every public function. Each funct
 
 Every public function must be either proven or tested. Uncovered functions are compilation errors.
 
-### 6.10.1 Coverage Rules
+### 6.9.1 Coverage Rules
 
 A function is **proven** when it has at least one `requires:`, `ensures:`, `invariant:`, or `panics: never` clause, and all clauses pass SMT verification.
 
@@ -427,7 +421,7 @@ A function is **uncovered** when it has neither contracts nor tests.
 
 Private functions do not require coverage. They may still have contracts, in which case those contracts are verified.
 
-### 6.10.2 Configuration
+### 6.9.2 Configuration
 
 Coverage requirements are configurable in `monel.project`:
 
@@ -447,7 +441,7 @@ coverage_exempt = ["src/generated/*", "src/bindings/*"]
 | `tests_required` | Every public function must have test coverage |
 | `off` | No coverage requirement |
 
-### 6.10.3 Coverage Report
+### 6.9.3 Coverage Report
 
 ```
 $ monel check --coverage
@@ -466,11 +460,11 @@ Verification coverage:
 
 ---
 
-## 6.11 Contract-Driven Test Generation
+## 6.10 Contract-Driven Test Generation
 
 The compiler can mechanically generate property tests from contracts. This is useful for functions that have contracts but would benefit from runtime validation in addition to SMT proof.
 
-### 6.11.1 Generation
+### 6.10.1 Generation
 
 ```
 $ monel test --generate-from-contracts
@@ -510,7 +504,7 @@ fn test_clamp_contracts(value: Int, low: Int, high: Int)
     assert result == value
 ```
 
-### 6.11.2 Configuration
+### 6.10.2 Configuration
 
 ```toml
 [verification]
@@ -524,11 +518,11 @@ Generated tests run as part of `monel test` and count toward verification covera
 
 ---
 
-## 6.12 Verification Manifest
+## 6.11 Verification Manifest
 
 Every build produces a verification manifest alongside the compiled output. The manifest is a JSON document recording all verification checks and their results.
 
-### 6.12.1 Manifest Structure
+### 6.11.1 Manifest Structure
 
 ```json
 {
@@ -569,7 +563,7 @@ Every build produces a verification manifest alongside the compiled output. The 
 }
 ```
 
-### 6.12.2 Manifest Usage
+### 6.11.2 Manifest Usage
 
 The verification manifest enables:
 
@@ -578,7 +572,7 @@ The verification manifest enables:
 3. **Incremental builds**: The manifest identifies which functions need re-checking after changes.
 4. **Dashboard integration**: Monitoring tools can aggregate verification results across services.
 
-### 6.12.3 Manifest Location
+### 6.11.3 Manifest Location
 
 The manifest is written to:
 - `target/verification-manifest.json` (default)
@@ -591,11 +585,11 @@ manifest_path = "target/verification-manifest.json"
 
 ---
 
-## 6.13 SMT Solver Integration
+## 6.12 SMT Solver Integration
 
 The compiler translates verification conditions into SMT-LIB format and invokes Z3.
 
-### 6.13.1 Translation Process
+### 6.12.1 Translation Process
 
 1. Function body is converted to SSA (Static Single Assignment) form.
 2. Each statement becomes an SMT assertion.
@@ -604,7 +598,7 @@ The compiler translates verification conditions into SMT-LIB format and invokes 
 5. If Z3 returns SAT, a counterexample is extracted and reported.
 6. If Z3 returns UNKNOWN (timeout), a warning is reported.
 
-### 6.13.2 Configuration
+### 6.12.2 Configuration
 
 ```toml
 # monel.project
@@ -614,7 +608,7 @@ smt_memory_limit_mb = 4096      # default: 4096
 timeout_is_error = false         # default: false (treat timeout as warning)
 ```
 
-### 6.13.3 Limitations
+### 6.12.3 Limitations
 
 Not all properties can be verified by SMT:
 - Properties involving heap-allocated data structures (e.g., `is_sorted()` on a `Vec`) may require loop invariants that the solver cannot infer.
@@ -631,11 +625,11 @@ warning[V0199]: verification inconclusive for `ensures: arr.is_sorted()`
 
 ---
 
-## 6.14 Incremental Verification
+## 6.13 Incremental Verification
 
 For large codebases, full verification on every build is expensive. Monel supports incremental verification.
 
-### 6.14.1 Change Detection
+### 6.13.1 Change Detection
 
 ```
 $ monel check --changed
@@ -647,7 +641,7 @@ The `--changed` flag restricts verification to files that have changed since the
 2. **Content hashing**: Files with changed timestamps are hashed; only those with actual content changes are re-checked.
 3. **Dependency tracking**: If function `f` depends on function `g`, and `g` changed, then `f` is re-checked.
 
-### 6.14.2 Dependency Graph
+### 6.13.2 Dependency Graph
 
 The compiler maintains a dependency graph mapping each function to:
 - Functions it calls
@@ -659,11 +653,11 @@ When a node in the dependency graph changes, all dependents are invalidated and 
 
 ---
 
-## 6.15 Edit-Compatible Errors
+## 6.14 Edit-Compatible Errors
 
 Every verification error includes machine-readable fix suggestions in the `old_string` / `new_string` format. This enables AI coding tools to apply fixes automatically.
 
-### 6.15.1 Error Format
+### 6.14.1 Error Format
 
 ```
 error[V0101]: precondition `balance >= amount` not proven at call site
@@ -680,7 +674,7 @@ error[V0101]: precondition `balance >= amount` not proven at call site
                    return Err(PaymentError.InsufficientFunds)
 ```
 
-### 6.15.2 Multi-Fix Errors
+### 6.14.2 Multi-Fix Errors
 
 Some errors require multiple fixes. These are presented as an ordered list:
 
@@ -698,7 +692,7 @@ error[V0102]: postcondition `result.len() == old(items.len())` not proven
                        result.len() <= old(items.len())
 ```
 
-### 6.15.3 JSON Error Output
+### 6.14.3 JSON Error Output
 
 For programmatic consumption:
 
@@ -735,11 +729,11 @@ $ monel check --format json
 
 ---
 
-## 6.16 Semantic Diff
+## 6.15 Semantic Diff
 
 The `monel diff` command shows what changed between two versions in terms of contracts and verification:
 
-### 6.16.1 Basic Usage
+### 6.15.1 Basic Usage
 
 ```
 $ monel diff HEAD~1
@@ -773,7 +767,7 @@ Changes since abc1234:
       - invariant: unchanged
 ```
 
-### 6.16.2 Verification Status Diff
+### 6.15.2 Verification Status Diff
 
 ```
 $ monel diff --verification
@@ -799,7 +793,7 @@ Verification status:
     (none)
 ```
 
-### 6.16.3 JSON Diff
+### 6.15.3 JSON Diff
 
 ```
 $ monel diff HEAD~1 --format json
@@ -809,7 +803,7 @@ Returns structured JSON for programmatic consumption.
 
 ---
 
-## 6.17 Error Code Reference
+## 6.16 Error Code Reference
 
 All verification-related error codes use the `V` prefix:
 
@@ -873,7 +867,7 @@ All verification-related error codes use the `V` prefix:
 
 ---
 
-## 6.18 Configuration Reference
+## 6.17 Configuration Reference
 
 All verification-related configuration in `monel.project`:
 
@@ -922,26 +916,3 @@ generate_manifest = true           # default: true
 # Error output format
 error_format = "human"             # "human" | "json"
 ```
-
----
-
-## 6.19 Summary
-
-| Aspect | Behavior |
-|--------|----------|
-| Preconditions (`requires:`) | SMT-verified at every call site |
-| Postconditions (`ensures:`) | SMT-verified at every return point, including per-error-variant |
-| Effects (`effects:`) | Inferred and checked as subset of declaration |
-| Invariants (`invariant:`) | SMT-verified after constructors and mutations |
-| Panic freedom (`panics: never`) | Statically proven via reachability analysis |
-| Refinement types | SMT-verified at assignment points |
-| State machines | Transitions verified against declaration |
-| Layouts | Region completeness and constraint satisfiability checked |
-| Interactions | State reachability and transition coverage checked |
-| Coverage | Every public function needs contracts or tests |
-| Test generation | Property tests generated mechanically from contracts |
-| Verification manifest | JSON record of all checks, generated with every build |
-| Incremental checking | Only changed functions and their dependents re-checked |
-| Error format | Edit-compatible with `old_string` / `new_string` suggestions |
-| Semantic diff | `monel diff` shows contract and verification changes |
-| Pipeline stages | Parse, Static Verification, Code Generation, Bundling |

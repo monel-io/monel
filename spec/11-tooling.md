@@ -1024,48 +1024,7 @@ For terminal applications, `monel dev` injects a transparent error overlay that 
 
 The overlay is non-intrusive: it appears in a corner of the terminal and auto-dismisses when errors are resolved.
 
----
-
-## 11.10 Concrete Impact: Tool Call Comparison
-
-This section quantifies the tooling advantage by comparing the number of tool calls needed for a common task: "Add rate limiting to the HTTP handler."
-
-### 11.10.1 Traditional Language (e.g., Go, TypeScript)
-
-An AI tool must:
-
-1. Search for HTTP handler files (`grep`, `find`): 2-3 calls.
-2. Read candidate files to find the right one: 2-3 calls.
-3. Understand the handler signature and middleware pattern: 1-2 calls.
-4. Search for existing rate limiting code: 1-2 calls.
-5. Search for configuration patterns: 1-2 calls.
-6. Read test files to understand testing patterns: 1-2 calls.
-7. Search for import conventions: 1 call.
-8. Read related middleware for patterns: 1-2 calls.
-9. Apply changes: 3-5 calls (handler, config, tests, etc.).
-10. Run tests and fix errors: 2-5 calls.
-
-**Total: ~15-30 tool calls**, many of which are speculative searches.
-
-### 11.10.2 Monel
-
-An AI tool uses structured commands:
-
-1. `monel context "Add rate limiting"`: 1 call (returns exact file set).
-2. Read primary file (handler contracts + implementation): 1 call.
-3. `monel query surface myapp/middleware --format llm`: 1 call (middleware patterns).
-4. `monel sketch "rate limit by IP"`: 1 call (generates contract stub).
-5. `monel generate rate_limit`: 1 call (generates implementation from contracts).
-6. `monel check --changed --format json`: 1 call (verify, get actionable fixes).
-7. `monel fix`: 0-1 calls (auto-apply certain fixes).
-
-**Total: ~6-8 tool calls**, all targeted and productive.
-
-The reduction comes from eliminating speculative searches. The compiler knows the codebase structure; the AI tool queries it directly instead of guessing.
-
----
-
-## 11.11 LSP Integration
+## 11.10 LSP Integration
 
 The Monel language server (`monel lsp`) exposes all query and refactoring capabilities through the Language Server Protocol.
 

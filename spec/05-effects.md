@@ -894,21 +894,3 @@ effect_bound   = "not" effect
 effect_poly    = "with" "effects" IDENT
 fn_type_effect = "fn" "(" params ")" "->" type "with" "effects" IDENT
 ```
-
----
-
-## 5.15 Summary
-
-| Property | Behavior |
-|----------|----------|
-| Default | `pure` (no effects) |
-| Declaration | `effects: [list]` on function signature |
-| Inference | Compiler infers actual effects from function body |
-| Checking | Inferred effects must be a subset of declared effects |
-| Polymorphism | `with effects E` on function type parameters |
-| Budgets | Runtime rate limits, configured in `monel.project` |
-| Policies | Forbidden combinations, module restrictions |
-| Queries | `monel query effects` for programmatic access |
-| Visualization | `monel dev --effects` for real-time tracing |
-| Hot-swap | Effect category determines swap safety level |
-| Custom effects | Defined in `monel.project` with category and risk |

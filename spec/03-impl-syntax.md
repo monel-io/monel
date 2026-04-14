@@ -7,15 +7,9 @@
 
 ---
 
-## 3.1 Purpose of This Chapter
+## 3.1 Syntax Overview
 
-This chapter defines the complete syntax and semantics of Monel implementation files (`.mn`). Implementation files contain the executable logic of a Monel program: the algorithms, data structures, control flow, and inline contracts that the compiler verifies. This chapter specifies the full EBNF grammar for `.mn` files.
-
----
-
-## 3.2 Design Principles
-
-### 3.2.1 Hybrid Syntax
+### 3.1.1 Hybrid Syntax
 
 Monel uses a hybrid syntax that combines indentation-based structure with minimal delimiters:
 

@@ -7,23 +7,15 @@
 
 ---
 
-## 2.1 Purpose of This Chapter
+## 2.1 Contract Block
 
-This chapter defines the syntax and semantics of Monel contracts. Contracts are inline annotations on functions, types, state machines, and layouts in `.mn` files. They declare *what* a construct must satisfy: preconditions, postconditions, invariants, effects, panic freedom, and complexity bounds. The compiler verifies contracts against the accompanying implementation.
+A function's contracts appear between its signature and its body, distinguished by contract keywords (`requires:`, `ensures:`, `effects:`, etc.). The parser treats any line beginning with a contract keyword at the appropriate indentation level as part of the contract block.
 
----
-
-## 2.2 Design Overview
-
-Contracts and implementation live in the same `.mn` file. There are no separate intent files. A function's contracts appear between its signature and its body, distinguished by the contract keywords (`requires:`, `ensures:`, `effects:`, etc.). The parser treats any line beginning with a contract keyword (at the appropriate indentation level) as part of the contract block.
-
-Contracts are always verified when present. There is no opt-in annotation. The presence of a contract keyword is sufficient to activate the corresponding verification pass.
-
-A function with no contract keywords is valid. The compiler performs standard type checking, borrow checking, and effect inference, but does not generate SMT proof obligations.
+Contracts are always verified when present; presence of a contract keyword activates the corresponding verification pass. A function with no contract keywords is valid: the compiler still performs type checking, borrow checking, and effect inference, but generates no SMT proof obligations.
 
 ---
 
-## 2.3 Contract Keywords
+## 2.2 Contract Keywords
 
 The following keywords introduce contract clauses. Each may appear at most once per declaration, except `ensures:` which may have multiple clauses (including conditional forms).
 
@@ -816,22 +808,3 @@ fn authenticate(creds: Credentials) -> Result<Session, AuthError>
 
 fn is_expired(session: &Session) -> Bool = session.expires_at <= Clock.now()
 ```
-
----
-
-## 2.12 Summary
-
-| Aspect | Behavior |
-|---|---|
-| File format | Contracts are inline in `.mn` files |
-| Activation | Presence of a contract keyword activates verification |
-| Preconditions | `requires:`: SMT-verified at call sites |
-| Postconditions | `ensures:`: SMT-verified at return points; supports `ok =>` and `err(V) =>` |
-| Effects | `effects:`: compiler infers from body, checks subset |
-| Panic freedom | `panics: never`: proven by static analysis |
-| Complexity | `complexity:`: constrains the optimizer |
-| Type invariants | `invariant:`: verified after construction and mutation |
-| Error variants | `fails:`: exhaustiveness and reachability checked |
-| Documentation | `doc:`: optional, never compiled |
-| Compact form | `fn name(...) -> T = expr` |
-| Solver timeout | Configurable; UNKNOWN results are warnings, not errors by default |
