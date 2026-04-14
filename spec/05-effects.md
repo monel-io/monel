@@ -4,23 +4,9 @@ This chapter specifies how developers declare side effects and how the compiler 
 
 ---
 
-## 5.1 Design Principles
+## 5.1 Effect Declarations
 
-1. **Effects are explicit.** Every function's side effects are part of its signature. A function that reads from a database, writes to the filesystem, or performs network I/O declares those effects. The compiler enforces that no undeclared effects occur.
-
-2. **Pure by default.** A function with no `effects:` declaration is pure. It performs no side effects. This is the common case for data transformations, algorithms, and business logic.
-
-3. **Transitive and compositional.** If function `f` calls function `g`, and `g` has effects, then `f` must declare those same effects. Effects propagate transitively through the call graph.
-
-4. **Queryable.** The toolchain exposes effect information via `monel query effects`, enabling AI coding tools, CI pipelines, and SRE dashboards to reason about what a module can do.
-
-5. **Declared and inferred.** Effects are declared on the function signature. The compiler infers the actual effects from the function body and checks that they are a subset of the declared effects.
-
----
-
-## 5.2 Effect Declarations
-
-### 5.2.1 Syntax
+### 5.1.1 Syntax
 
 Effects are declared on function signatures using the `effects:` field:
 
@@ -36,7 +22,7 @@ fn save_user(user: User) -> Result<Unit, DbError>
 
 The `effects:` declaration lists the maximum set of effects this function may perform. The compiler infers the actual effects from the function body and verifies they do not exceed the declared set.
 
-### 5.2.2 Pure Functions
+### 5.1.2 Pure Functions
 
 A function with no `effects:` declaration is pure:
 
@@ -52,7 +38,7 @@ This is equivalent to writing `effects: [pure]`, though the explicit form is rar
 - Can be memoized by the compiler.
 - Can be evaluated at compile time if their inputs are const.
 
-### 5.2.3 Effect Syntax
+### 5.1.3 Effect Syntax
 
 Effects are written as `Category.operation` or just `Category.*` to indicate all operations in a category:
 
@@ -67,11 +53,11 @@ effects: [async]             // asynchronous operations
 
 ---
 
-## 5.3 Built-in Effect Categories
+## 5.2 Built-in Effect Categories
 
 Monel defines the following built-in effect categories. These cover the fundamental classes of side effects that any systems programming language must handle.
 
-### 5.3.1 `pure`
+### 5.2.1 `pure`
 
 No effects. The function is a pure computation.
 
@@ -79,7 +65,7 @@ No effects. The function is a pure computation.
 - Cannot be combined with any other effect.
 - Guaranteed referentially transparent.
 
-### 5.3.2 Database Effects: `Db`
+### 5.2.2 Database Effects: `Db`
 
 | Effect     | Description                                      |
 |------------|--------------------------------------------------|
@@ -88,7 +74,7 @@ No effects. The function is a pure computation.
 
 `Db.write` implies `Db.read`. A function that writes to the database is assumed to also be able to read.
 
-### 5.3.3 Network Effects: `Http` and `Net`
+### 5.2.3 Network Effects: `Http` and `Net`
 
 | Effect        | Description                                    |
 |---------------|------------------------------------------------|
@@ -101,7 +87,7 @@ No effects. The function is a pure computation.
 
 `Http.send` implies `Net.connect` and `Net.send`. `Http.receive` implies `Net.receive`.
 
-### 5.3.4 Filesystem Effects: `Fs`
+### 5.2.4 Filesystem Effects: `Fs`
 
 | Effect     | Description                               |
 |------------|-------------------------------------------|
@@ -110,7 +96,7 @@ No effects. The function is a pure computation.
 
 `Fs.write` implies `Fs.read`.
 
-### 5.3.5 Logging: `Log`
+### 5.2.5 Logging: `Log`
 
 | Effect      | Description              |
 |-------------|--------------------------|
@@ -118,7 +104,7 @@ No effects. The function is a pure computation.
 
 Logging is a separate effect because it is pervasive but has different risk characteristics than filesystem I/O. SRE policies often allow `Log.write` broadly while restricting `Fs.write`.
 
-### 5.3.6 Cryptographic Operations: `Crypto`
+### 5.2.6 Cryptographic Operations: `Crypto`
 
 | Effect          | Description                              |
 |-----------------|------------------------------------------|
@@ -131,7 +117,7 @@ Logging is a separate effect because it is pervasive but has different risk char
 
 Crypto effects exist because cryptographic operations are security-critical and auditable. Even though `Crypto.hash` is technically pure, it is tracked as an effect for policy and auditability purposes.
 
-### 5.3.7 Authentication and Authorization: `Auth`
+### 5.2.7 Authentication and Authorization: `Auth`
 
 | Effect          | Description                                |
 |-----------------|--------------------------------------------|
@@ -142,7 +128,7 @@ Crypto effects exist because cryptographic operations are security-critical and 
 
 Auth effects enable security policies that restrict which modules can perform authentication and authorization.
 
-### 5.3.8 Atomic Operations: `Atomic`
+### 5.2.8 Atomic Operations: `Atomic`
 
 | Effect         | Description                                |
 |----------------|--------------------------------------------|
@@ -152,7 +138,7 @@ Auth effects enable security policies that restrict which modules can perform au
 
 Atomic effects track lock-free concurrent operations.
 
-### 5.3.9 Process and System: `Process`, `Signal`
+### 5.2.9 Process and System: `Process`, `Signal`
 
 | Effect          | Description                        |
 |-----------------|------------------------------------|
@@ -162,7 +148,7 @@ Atomic effects track lock-free concurrent operations.
 | `Signal.handle` | Register signal handlers          |
 | `Signal.send`   | Send signals to processes         |
 
-### 5.3.10 Asynchronous Operations: `async`
+### 5.2.10 Asynchronous Operations: `async`
 
 The `async` effect marks functions that perform asynchronous operations and return futures:
 
@@ -178,7 +164,7 @@ The `async` effect:
 - Propagates transitively: calling an `async` function requires `async`.
 - Is orthogonal to other effects: `async` + `Db.read` is a function that asynchronously reads a database.
 
-### 5.3.11 Unsafe Operations: `unsafe`
+### 5.2.11 Unsafe Operations: `unsafe`
 
 The `unsafe` effect covers operations that bypass Monel's safety guarantees:
 
@@ -199,7 +185,7 @@ The `unsafe` effect is required for:
 
 `unsafe` is the most restrictive effect. Policies can forbid it entirely for application-level code.
 
-### 5.3.12 Memory Allocation: `Alloc`
+### 5.2.12 Memory Allocation: `Alloc`
 
 | Effect        | Description                    |
 |---------------|--------------------------------|
@@ -216,7 +202,7 @@ In normal compilation, `Alloc` effects are not tracked; they are implicitly allo
 track_alloc = true
 ```
 
-### 5.3.13 Time: `Time`
+### 5.2.13 Time: `Time`
 
 | Effect       | Description                       |
 |--------------|-----------------------------------|
@@ -228,7 +214,7 @@ Time effects exist because functions that depend on the current time are not pur
 
 ---
 
-## 5.4 Custom Effects
+## 5.3 Custom Effects
 
 Teams can define custom effects in `monel.project` to track domain-specific side effects:
 
@@ -241,7 +227,7 @@ S3Upload = { category = "storage", risk = "medium" }
 SlackNotify = { category = "notifications", risk = "low" }
 ```
 
-### 5.4.1 Custom Effect Properties
+### 5.3.1 Custom Effect Properties
 
 Each custom effect declaration specifies:
 
@@ -259,7 +245,7 @@ KafkaPublish = { category = "messaging", risk = "medium", implies = ["Net.send"]
 
 With this declaration, a function declaring `effects: [KafkaPublish]` implicitly has `Net.send` and must also declare `Log.write`.
 
-### 5.4.2 Using Custom Effects
+### 5.3.2 Using Custom Effects
 
 Custom effects are used exactly like built-in effects:
 
@@ -272,7 +258,7 @@ fn publish_order_event(order: Order)
 
 The compiler verifies that `kafka.publish` is annotated with `KafkaPublish` in its signature (typically via a library binding).
 
-### 5.4.3 Custom Effect Hierarchies
+### 5.3.3 Custom Effect Hierarchies
 
 Custom effects can form hierarchies using dot notation:
 
@@ -287,9 +273,9 @@ The wildcard `Payment.*` matches all three.
 
 ---
 
-## 5.5 Effect Checking Rules
+## 5.4 Effect Checking Rules
 
-### 5.5.1 Declaration and Inference
+### 5.4.1 Declaration and Inference
 
 Every function must declare all effects it may perform. The compiler infers the actual effects from the function body and checks that they are a subset of the declared set:
 
@@ -314,7 +300,7 @@ fn save_user(user: User) -> Result<Unit, Error>
   Ok(())
 ```
 
-### 5.5.2 Transitive Propagation
+### 5.4.2 Transitive Propagation
 
 Effects propagate transitively through the call graph. If `f` calls `g`, and `g` declares `effects: [Db.read]`, then `f` must declare `Db.read` (or a superset like `Db.*`):
 
@@ -335,7 +321,7 @@ fn process() -> Result<Unit, Error>
   Ok(())
 ```
 
-### 5.5.3 Subset Rule for Pure Functions
+### 5.4.3 Subset Rule for Pure Functions
 
 A pure function (no `effects:` declaration) cannot call any function that has effects:
 
@@ -347,7 +333,7 @@ fn compute(x: Int) -> Int
   y
 ```
 
-### 5.5.4 Superset Rule for Callers
+### 5.4.4 Superset Rule for Callers
 
 A function may declare more effects than it actually uses. This is useful when the function's behavior depends on runtime conditions:
 
@@ -363,7 +349,7 @@ fn maybe_save(user: User, persist: Bool) -> Result<Unit, Error>
 
 The compiler issues a warning (not an error) for declared-but-unused effects, since they may be needed in future code paths.
 
-### 5.5.5 Standard I/O Exception
+### 5.4.5 Standard I/O Exception
 
 `println`, `eprintln`, `print`, and `eprint` are special: they write to stdout/stderr but do not require an effect declaration. This exception exists because:
 - Debug printing should not require effect annotations during development.
@@ -377,7 +363,7 @@ This exception can be disabled project-wide:
 stdio_is_effect = true  # makes println require Fs.write
 ```
 
-### 5.5.6 Effect Implication Rules
+### 5.4.6 Effect Implication Rules
 
 Certain effects imply others. The complete implication graph:
 
@@ -440,11 +426,11 @@ When a function declares `effects: [Db.write]`, it may perform both `Db.read` an
 
 ---
 
-## 5.6 Effect Polymorphism
+## 5.5 Effect Polymorphism
 
 Functions can be generic over effects, allowing the same function to work with both pure and effectful callbacks:
 
-### 5.6.1 Syntax
+### 5.5.1 Syntax
 
 ```
 fn map_items<T, U, E>(items: &Vec<T>, f: fn(T) -> U with effects E) -> Vec<U>
@@ -454,7 +440,7 @@ fn map_items<T, U, E>(items: &Vec<T>, f: fn(T) -> U with effects E) -> Vec<U>
 
 The `with effects E` clause on a function type parameter introduces an effect variable `E`. The enclosing function declares `effects: E` to propagate whatever effects `f` has.
 
-### 5.6.2 Example
+### 5.5.2 Example
 
 ```
 fn transform<T, U, E>(input: T, f: fn(T) -> U with effects E) -> U
@@ -472,7 +458,7 @@ let result = transform(42, |x|             // effects: [Db.read]
 
 The effect variable `E` is inferred at each call site from the actual effects of the provided callback.
 
-### 5.6.3 Bounded Effect Polymorphism
+### 5.5.3 Bounded Effect Polymorphism
 
 Effect variables can be constrained:
 
@@ -493,9 +479,9 @@ The bound `E: not unsafe` ensures the callback cannot perform unsafe operations.
 
 ---
 
-## 5.7 Effect Inference
+## 5.6 Effect Inference
 
-### 5.7.1 Within Function Bodies
+### 5.6.1 Within Function Bodies
 
 The compiler infers the effects of each expression within a function body and verifies they are within the declared set:
 
@@ -515,7 +501,7 @@ fn process(data: &Vec<Record>) -> Result<Summary, Error>
   Ok(summary)
 ```
 
-### 5.7.2 For Closures
+### 5.6.2 For Closures
 
 Closures inherit effect context from their enclosing function but may have a narrower set:
 
@@ -529,7 +515,7 @@ fn process(items: &Vec<Item>) -> Vec<String>
   ).collect()
 ```
 
-### 5.7.3 Effect Suggestion
+### 5.6.3 Effect Suggestion
 
 When the compiler infers effects not in the function's declaration, it suggests the correct declaration:
 
@@ -556,11 +542,11 @@ Errors include `old_string`/`new_string` fix suggestions for AI coding tools.
 
 ---
 
-## 5.8 Effect Budgets
+## 5.7 Effect Budgets
 
 Effect budgets allow SRE teams to set quantitative limits on effects. This is a runtime enforcement mechanism configured in `monel.project`:
 
-### 5.8.1 Configuration
+### 5.7.1 Configuration
 
 ```toml
 [effects.budgets]
@@ -570,7 +556,7 @@ Effect budgets allow SRE teams to set quantitative limits on effects. This is a 
 "KafkaPublish" = { max_per_second = 500 }
 ```
 
-### 5.8.2 Budget Properties
+### 5.7.2 Budget Properties
 
 | Property           | Type | Description |
 |--------------------|------|-------------|
@@ -580,7 +566,7 @@ Effect budgets allow SRE teams to set quantitative limits on effects. This is a 
 | `max_concurrent`   | Int  | Maximum concurrent invocations |
 | `alert_threshold`  | Float | Fraction of budget (0.0-1.0) that triggers a warning |
 
-### 5.8.3 Enforcement
+### 5.7.3 Enforcement
 
 Effect budgets generate runtime instrumentation. The compiler inserts counters at each effect site. When a budget is exceeded:
 
@@ -590,7 +576,7 @@ Effect budgets generate runtime instrumentation. The compiler inserts counters a
 
 Budget enforcement is disabled in tests by default and can be disabled globally with `--no-budgets`.
 
-### 5.8.4 Budget Queries
+### 5.7.4 Budget Queries
 
 ```
 $ monel query budgets user_service
@@ -603,11 +589,11 @@ Http.send      200/s             18/s       9.0%
 
 ---
 
-## 5.9 Effect Policies
+## 5.8 Effect Policies
 
 Effect policies are organizational rules that restrict which effects are allowed in which modules. They are configured in `monel.policy` or `monel.project`.
 
-### 5.9.1 Forbidden Effect Combinations
+### 5.8.1 Forbidden Effect Combinations
 
 Certain effect combinations can be forbidden:
 
@@ -622,7 +608,7 @@ forbidden_combinations = [
 
 If a function (directly or transitively) uses both effects in a forbidden pair, compilation fails.
 
-### 5.9.2 Module-Level Restrictions
+### 5.8.2 Module-Level Restrictions
 
 Effects can be restricted per module:
 
@@ -634,7 +620,7 @@ Effects can be restricted per module:
 "app::infra" = { forbidden = ["Auth.*"] }
 ```
 
-### 5.9.3 Risk-Based Policies
+### 5.8.3 Risk-Based Policies
 
 Policies can reference the risk level of custom effects:
 
@@ -644,15 +630,15 @@ require_review_for = ["high"]     # high-risk effects require code review annota
 max_risk_per_function = "medium"  # no function may combine high-risk effects
 ```
 
-### 5.9.4 Policy Inheritance
+### 5.8.4 Policy Inheritance
 
 Policies are inherited: a child module inherits its parent's restrictions unless explicitly overridden. A child module can only narrow restrictions (remove allowed effects), never broaden them.
 
 ---
 
-## 5.10 Effect Interaction with Other Language Features
+## 5.9 Effect Interaction with Other Language Features
 
-### 5.10.1 Effects and Hot-Swapping
+### 5.9.1 Effects and Hot-Swapping
 
 Monel supports hot-swapping of modules in running systems. The effect system determines the safety level:
 
@@ -676,14 +662,14 @@ Analyzing module changes...
   user_service::ffi_bind  (unsafe)       → BLOCKED: unsafe, requires --force
 ```
 
-### 5.10.2 Effects and Concurrency
+### 5.9.2 Effects and Concurrency
 
 The effect system interacts with concurrency in two ways:
 
 1. **Race detection**: Functions with `*.write` effects on the same resource, called from concurrent contexts, generate a compile-time warning.
 2. **Deadlock prevention**: `Atomic.*` effects are tracked to detect potential deadlocks (advisory, not sound).
 
-### 5.10.3 Effects and Testing
+### 5.9.3 Effects and Testing
 
 In test modules, effects can be mocked:
 
@@ -700,7 +686,7 @@ fn test_save_user()
 
 The `mock effects:` directive intercepts effect sites and redirects them to test implementations.
 
-### 5.10.4 Effects and Const Evaluation
+### 5.9.4 Effects and Const Evaluation
 
 `const fn` cannot have effects. This is enforced statically:
 
@@ -716,11 +702,11 @@ const fn bad() -> Int                  // ERROR: const fn cannot have effects
 
 ---
 
-## 5.11 Effect Queries
+## 5.10 Effect Queries
 
 The `monel query` command exposes effect information for programmatic consumption.
 
-### 5.11.1 Function Effects
+### 5.10.1 Function Effects
 
 ```
 $ monel query effects user_service::save_user
@@ -733,7 +719,7 @@ Transitive effects:
               ← log::info (called at line 4)
 ```
 
-### 5.11.2 Module Effects
+### 5.10.2 Module Effects
 
 ```
 $ monel query effects user_service
@@ -747,7 +733,7 @@ Effect summary:
   Http.send:  1 function
 ```
 
-### 5.11.3 Effect Graph
+### 5.10.3 Effect Graph
 
 ```
 $ monel query effect-graph user_service::save_user --format dot
@@ -758,7 +744,7 @@ digraph {
 }
 ```
 
-### 5.11.4 JSON Output
+### 5.10.4 JSON Output
 
 All queries support `--format json` for programmatic consumption:
 
@@ -782,7 +768,7 @@ $ monel query effects user_service::save_user --format json
 
 ---
 
-## 5.12 Live Effect Visualization
+## 5.11 Live Effect Visualization
 
 During development, `monel dev --effects` provides a real-time effect trace:
 
@@ -795,7 +781,7 @@ $ monel dev --effects
 [14:32:01.152] order_service::create_order    Log.write  log::info              1ms
 ```
 
-### 5.12.1 Filtering
+### 5.11.1 Filtering
 
 ```
 $ monel dev --effects --filter "Db.*"          # only database effects
@@ -803,7 +789,7 @@ $ monel dev --effects --filter "risk:high"     # only high-risk effects
 $ monel dev --effects --module user_service    # only this module
 ```
 
-### 5.12.2 Effect Dashboard
+### 5.11.2 Effect Dashboard
 
 ```
 $ monel dev --effects --dashboard
@@ -822,11 +808,11 @@ $ monel dev --effects --dashboard
 
 ---
 
-## 5.13 Effect Verification
+## 5.12 Effect Verification
 
 The compiler verifies that declared effects are consistent with the function body.
 
-### 5.13.1 Subset Rule
+### 5.12.1 Subset Rule
 
 The compiler infers the actual effects from the function body and checks that they are a subset of the declared effects:
 
@@ -841,7 +827,7 @@ fn save_user(user: User) -> Result<Unit, Error>
 
 The inferred effects `{Db.write, Log.write}` are a subset of the declared effects `{Db.write, Log.write}`, so compilation succeeds.
 
-### 5.13.2 Violation: Excess Effects
+### 5.12.2 Violation: Excess Effects
 
 If the body performs effects beyond the declaration, the compiler reports an error:
 
@@ -863,7 +849,7 @@ fn save_user(user: User) -> Result<Unit, Error>
 //   = help: add `Fs.write` to the effects declaration
 ```
 
-### 5.13.3 Unused Effects Warning
+### 5.12.3 Unused Effects Warning
 
 If the declaration includes effects that the compiler does not infer from the body, a warning is issued:
 
@@ -874,7 +860,7 @@ If the declaration includes effects that the compiler does not infer from the bo
 
 ---
 
-## 5.14 Grammar (Informative)
+## 5.13 Grammar (Informative)
 
 ```
 effect_decl    = "effects:" "[" effect_list "]"

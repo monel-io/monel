@@ -1,17 +1,8 @@
 # 8. Error Handling
 
-## 8.1 Overview
+Monel treats errors as values. Every fallible operation returns `Result<T, E>`. There are no exceptions, no unwinding, no hidden control flow. The compiler requires exhaustive handling of all variants, and panics are for invariant violations only.
 
-Monel treats errors as values. There are no exceptions, no unwinding, and no hidden control flow. Every operation that can fail returns a `Result<T, E>`, and the compiler enforces exhaustive handling of all error variants. Error types and their variants are declared alongside the functions that produce them, making the failure modes of every function visible without reading the implementation body.
-
-## 8.2 Core Principles
-
-1. **Errors are values.** A function that can fail returns `Result<T, E>`. There is no `throw`, no exception hierarchy, no stack unwinding.
-2. **Error variants are declared with the function.** The function signature or its associated error type lists every variant. The compiler verifies the implementation matches.
-3. **Exhaustive handling is required.** Every `match` on a `Result` or error type must handle all variants. The compiler rejects incomplete matches.
-4. **Panics are for invariant violations only.** A `panic` indicates a bug in the program, not a recoverable error. The `panics: never` annotation enables compile-time proof that no panics can occur.
-
-## 8.3 The Result Type
+## 8.1 The Result Type
 
 `Result<T, E>` is the fundamental error handling type:
 
@@ -23,7 +14,7 @@ type Result<T, E>
 
 It is a sum type with exactly two variants. `T` is the success value, `E` is the error value. There is no null, no nil, no undefined -- absence is modeled with `Option<T>`, failure with `Result<T, E>`.
 
-### 8.3.1 Result Usage
+### 8.1.1 Result Usage
 
 ```
 fn find_user(name: String) -> Result<User, DbError>
@@ -33,9 +24,9 @@ fn find_user(name: String) -> Result<User, DbError>
     | None => Err(DbError.NotFound("user not found: {name}"))
 ```
 
-## 8.4 Error Type Declarations
+## 8.2 Error Type Declarations
 
-### 8.4.1 Lightweight Error Declarations
+### 8.2.1 Lightweight Error Declarations
 
 In lightweight (default) mode, error variants are declared with the `fails:` keyword on the function:
 
@@ -55,7 +46,7 @@ The `fails:` block lists each variant with a human-readable description. The des
 1. Documentation for humans reading the function.
 2. Default error message if the implementation does not provide a custom one.
 
-### 8.4.2 Error Declarations with Contracts
+### 8.2.2 Error Declarations with Contracts
 
 When contracts (`requires`/`ensures`) are present, error variants are declared with the `errors:` keyword, which supports additional metadata:
 
@@ -88,7 +79,7 @@ fn authenticate(username: String, password: String) -> Result<Session, AuthError
 
 The additional metadata fields (`http_status`, `recoverable`, `retry_after`, etc.) are freeform key-value pairs. The compiler does not interpret them, but tooling (`monel generate`, HTTP framework integrations) can use them.
 
-### 8.4.3 Standalone Error Type Declarations
+### 8.2.3 Standalone Error Type Declarations
 
 Error types can be declared as standalone types, separate from any function:
 
@@ -115,7 +106,7 @@ fn refresh_session(token: String) -> Result<Session, AuthError>
   // ...
 ```
 
-### 8.4.4 Error Type with Fields
+### 8.2.4 Error Type with Fields
 
 Error variants can carry data:
 
@@ -143,11 +134,11 @@ Err(DbError.NotFound(table: "users", id: user_id))
 Err(DbError.ConnectionFailed(host: db_host, port: 5432, cause: e.message()))
 ```
 
-## 8.5 The `try` Keyword
+## 8.3 The `try` Keyword
 
 The `try` keyword propagates errors. It is equivalent to Rust's `?` operator but uses an explicit keyword for readability.
 
-### 8.5.1 Basic Usage
+### 8.3.1 Basic Usage
 
 ```
 fn load_config(path: String) -> Result<Config, ConfigError>
@@ -159,7 +150,7 @@ fn load_config(path: String) -> Result<Config, ConfigError>
 
 `try expr` evaluates `expr`. If the result is `Ok(v)`, the expression evaluates to `v`. If the result is `Err(e)`, the function immediately returns `Err(e)`.
 
-### 8.5.2 Type Requirements
+### 8.3.2 Type Requirements
 
 `try` can only be used in a function that returns `Result<T, E>`. The error type of the `try` expression must be convertible to the function's error type `E`. If the types do not match, the compiler emits an error:
 
@@ -175,7 +166,7 @@ error: incompatible error types in `try` expression
    = help: or map the error: `try read_file(path).map_err(ConfigError.from_io)`
 ```
 
-### 8.5.3 `try` With Error Mapping
+### 8.3.3 `try` With Error Mapping
 
 When error types do not align, `try` can be combined with `.map_err()`:
 
@@ -186,7 +177,7 @@ fn load_config(path: String) -> Result<Config, ConfigError>
   Ok(Config.from_toml(parsed))
 ```
 
-### 8.5.4 `try` in Blocks
+### 8.3.4 `try` in Blocks
 
 `try` can be used in block expressions to scope error handling:
 
@@ -201,11 +192,11 @@ fn process_data(input: String) -> Result<Output, ProcessError>
   Ok(result)
 ```
 
-## 8.6 Compiler Verification
+## 8.4 Compiler Verification
 
 The compiler enforces several invariants about error types and their usage.
 
-### 8.6.1 Variant Coverage in Implementation
+### 8.4.1 Variant Coverage in Implementation
 
 Every error variant declared in the function's contract must appear in the implementation. If a variant is declared but never constructed, the compiler emits a warning:
 
@@ -219,7 +210,7 @@ warning: unused error variant
    = help: remove the variant from the declaration, or add code that produces it
 ```
 
-### 8.6.2 No Undeclared Variants
+### 8.4.2 No Undeclared Variants
 
 If the implementation constructs an error variant that is not declared, the compiler emits an error:
 
@@ -234,7 +225,7 @@ error: undeclared error variant
    |     RateLimited: "too many login attempts"
 ```
 
-### 8.6.3 Exhaustive Matching
+### 8.4.3 Exhaustive Matching
 
 Every `match` on a `Result` or error type must handle all variants:
 
@@ -263,14 +254,14 @@ error: non-exhaustive match
 
 A wildcard `Err(_)` arm can be used to handle all remaining error variants, but the compiler emits a lint warning because wildcard error handling is often a mistake. The lint can be suppressed with `#[allow(wildcard_error)]`.
 
-### 8.6.4 `try` Error Type Compatibility
+### 8.4.4 `try` Error Type Compatibility
 
 The compiler verifies that every `try` expression's error type is compatible with the enclosing function's return error type. Compatibility means one of:
 1. The types are identical.
 2. A `From<SourceError>` conversion exists for the target error type.
 3. An explicit `.map_err()` transforms the error.
 
-### 8.6.5 Dead Error Paths
+### 8.4.5 Dead Error Paths
 
 When contracts include preconditions, the compiler performs reachability analysis on error paths. If a precondition makes an error variant unreachable, the compiler notes this:
 
@@ -288,11 +279,11 @@ info: error variant `DivisionByZero` is unreachable given precondition `b != 0`
    = note: consider removing the variant, or relaxing the precondition
 ```
 
-## 8.7 Panic
+## 8.5 Panic
 
 `panic` is reserved for invariant violations -- situations that indicate a bug in the program, not a runtime condition that should be handled.
 
-### 8.7.1 Usage
+### 8.5.1 Usage
 
 ```
 fn get_element(list: Vec<T>, index: UInt) -> T
@@ -301,7 +292,7 @@ fn get_element(list: Vec<T>, index: UInt) -> T
   list[index]
 ```
 
-### 8.7.2 Panic Behavior
+### 8.5.2 Panic Behavior
 
 When a `panic` is reached:
 1. The current task is terminated.
@@ -311,7 +302,7 @@ When a `panic` is reached:
 
 Panics do not unwind. There is no `catch` for panics. Resources are cleaned up via the runtime's structured concurrency guarantees (parent scopes outlive child scopes, so resource owners are always valid).
 
-### 8.7.3 `panics: never`
+### 8.5.3 `panics: never`
 
 A function can declare `panics: never`:
 
@@ -346,7 +337,7 @@ error: function declared `panics: never` but may panic
    = help: use `list.get(index)` which returns `Option<T>`
 ```
 
-### 8.7.4 Debug Assertions
+### 8.5.4 Debug Assertions
 
 `assert` is syntactic sugar for a conditional panic:
 
@@ -361,9 +352,9 @@ Debug assertions (`debug_assert`) are compiled only in debug mode. In release mo
 
 A function that uses `assert` or `debug_assert` cannot declare `panics: never` unless the compiler can prove the assertion condition always holds.
 
-## 8.8 Error Conversion
+## 8.6 Error Conversion
 
-### 8.8.1 The `From` Trait
+### 8.6.1 The `From` Trait
 
 Error types can implement `From` conversions to enable automatic conversion in `try` expressions:
 
@@ -383,15 +374,15 @@ fn load_config(path: String) -> Result<Config, ConfigError>
   Ok(parse(content))
 ```
 
-### 8.8.2 Conversion Rules
+### 8.6.2 Conversion Rules
 
 1. At most one `From` conversion may exist for any pair of error types.
 2. Conversion chains are not followed. If `From<A> for B` and `From<B> for C` exist, that does NOT imply `From<A> for C`.
 3. The compiler suggests adding `From` implementations when a `try` expression fails due to type mismatch.
 
-## 8.9 Error Context and Wrapping
+## 8.7 Error Context and Wrapping
 
-### 8.9.1 The `context` Method
+### 8.7.1 The `context` Method
 
 Errors can be wrapped with additional context using the `.context()` method:
 
@@ -404,7 +395,7 @@ fn load_user_config() -> Result<Config, AppError>
 
 `.context()` wraps the original error in a context layer. The original error is preserved and accessible via `.source()`.
 
-### 8.9.2 Context Chains
+### 8.7.2 Context Chains
 
 Contexts can be nested arbitrarily deep:
 
@@ -417,7 +408,7 @@ AppError: failed to start application
 
 The `Display` implementation for context-wrapped errors formats the full chain.
 
-### 8.9.3 The `with_context` Method
+### 8.7.3 The `with_context` Method
 
 For expensive context construction, use `.with_context()` which takes a closure:
 
@@ -427,9 +418,9 @@ let data = try fetch(url).with_context(|| "failed to fetch {url} (attempt {attem
 
 The closure is only called if the result is `Err`.
 
-## 8.10 Custom Error Types
+## 8.8 Custom Error Types
 
-### 8.10.1 Simple Enum Errors
+### 8.8.1 Simple Enum Errors
 
 The most common error type is an enum with descriptive variants:
 
@@ -447,7 +438,7 @@ type ParseError
       fields: [message: String, line: UInt32, column: UInt32]
 ```
 
-### 8.10.2 Struct Errors
+### 8.8.2 Struct Errors
 
 For errors with a single representation, a struct error type can be used:
 
@@ -462,7 +453,7 @@ type HttpError
 
 Struct errors are used when there is only one "variant" and the error is distinguished by its field values rather than its variant name.
 
-### 8.10.3 Composite Error Types
+### 8.8.3 Composite Error Types
 
 Error types can compose other error types:
 
@@ -492,11 +483,11 @@ impl From<AuthError> for AppError
 
 This allows `try` to automatically lift inner errors to the composite type.
 
-## 8.11 Relationship to Effects
+## 8.9 Relationship to Effects
 
 Errors and effects are orthogonal but interact in important ways.
 
-### 8.11.1 Effect-ful Operations Produce Errors
+### 8.9.1 Effect-ful Operations Produce Errors
 
 Functions with effects typically return `Result` because the effectful operation can fail:
 
@@ -520,7 +511,7 @@ The compiler does not enforce a strict relationship between effects and errors, 
 require_result_for = ["Db.write", "Http.send", "Fs.write"]
 ```
 
-### 8.11.2 Pure Functions and Errors
+### 8.9.2 Pure Functions and Errors
 
 Functions with no effects can still return `Result`:
 
@@ -537,7 +528,7 @@ fn parse_json(input: String) -> Result<JsonValue, ParseError>
 
 This is valid -- parsing is pure but fallible.
 
-### 8.11.3 Infallible Effect-ful Functions
+### 8.9.3 Infallible Effect-ful Functions
 
 Some effect-ful functions cannot fail:
 
@@ -550,11 +541,11 @@ fn log_message(level: LogLevel, message: String) -> ()
 
 This is also valid -- the function has effects but no error return. The compiler permits this without warning.
 
-## 8.12 Error Reporting in Compiler Output
+## 8.10 Error Reporting in Compiler Output
 
 The Monel compiler emits errors in a format designed for both human readability and machine consumption.
 
-### 8.12.1 Human-Readable Format
+### 8.10.1 Human-Readable Format
 
 ```
 error[E0412]: non-exhaustive match on Result<Session, AuthError>
@@ -571,7 +562,7 @@ error[E0412]: non-exhaustive match on Result<Session, AuthError>
    |     Err(AuthError.Expired) -> try refresh_session(session.token)
 ```
 
-### 8.12.2 Edit-Compatible JSON Format
+### 8.10.2 Edit-Compatible JSON Format
 
 For integration with editors and AI coding tools, the compiler can emit errors as JSON with edit suggestions:
 
@@ -614,7 +605,7 @@ For integration with editors and AI coding tools, the compiler can emit errors a
 
 This JSON format is used by `monel` when invoked with `--output=json`. AI coding tools parse these suggestions and apply them as edits.
 
-### 8.12.3 Error Codes
+### 8.10.3 Error Codes
 
 All error-handling-related diagnostics have stable error codes:
 
@@ -632,7 +623,7 @@ All error-handling-related diagnostics have stable error codes:
 | E0430  | Error variant field mismatch between declaration and implementation |
 | E0440  | Error type conversion cycle detected           |
 
-## 8.13 The `Option` Type
+## 8.11 The `Option` Type
 
 While not strictly an error type, `Option<T>` is the companion to `Result<T, E>` for representing absence:
 
@@ -642,7 +633,7 @@ type Option<T>
   None
 ```
 
-### 8.13.1 Option vs Result
+### 8.11.1 Option vs Result
 
 - Use `Option<T>` when absence is expected and not an error (e.g., looking up a key that may not exist).
 - Use `Result<T, E>` when absence is an error condition with a specific cause.
@@ -659,7 +650,7 @@ fn require_env(name: String) -> Result<String, ConfigError>
     Missing: "required environment variable is not set"
 ```
 
-### 8.13.2 Converting Option to Result
+### 8.11.2 Converting Option to Result
 
 `Option` can be converted to `Result` via `.ok_or()` and `.ok_or_else()`:
 
@@ -669,9 +660,9 @@ let port = try get_env("PORT")
   .and_then(|s| s.parse::<UInt16>().map_err(|_| ConfigError.Invalid("PORT", s)))
 ```
 
-## 8.14 Error Handling Patterns
+## 8.12 Error Handling Patterns
 
-### 8.14.1 The Collect Pattern
+### 8.12.1 The Collect Pattern
 
 When processing a collection where each element can fail, use the collect pattern:
 
@@ -682,7 +673,7 @@ fn parse_all(inputs: Vec<String>) -> Result<Vec<Parsed>, ParseError>
 
 `collect()` on an iterator of `Result<T, E>` returns `Result<Vec<T>, E>`. It short-circuits on the first error.
 
-### 8.14.2 The Accumulate Pattern
+### 8.12.2 The Accumulate Pattern
 
 When you want to collect all errors (not just the first), use `accumulate`:
 
@@ -698,7 +689,7 @@ fn validate_all(fields: Vec<Field>) -> Result<Vec<ValidField>, Vec<ValidationErr
     Err(errors)
 ```
 
-### 8.14.3 The Fallback Pattern
+### 8.12.3 The Fallback Pattern
 
 Try multiple strategies, falling back on error:
 
@@ -709,7 +700,7 @@ fn find_config() -> Result<Config, ConfigError>
     .or_else(|_| Ok(Config.default()))
 ```
 
-### 8.14.4 The Retry Pattern
+### 8.12.4 The Retry Pattern
 
 For transient errors, use retry with backoff:
 

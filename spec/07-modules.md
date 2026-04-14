@@ -4,15 +4,7 @@ A module is a single `.mn` file. The module system maps filesystem paths to modu
 
 ---
 
-## 7.1 Design Principles
-
-1. **Greppability.** Every symbol usage can be traced to its source with a text search.
-2. **Context window efficiency.** Module boundaries are sized so that an LLM can hold a complete module within a single context window.
-3. **Contracts as API.** A module's public API consists of its exported function signatures and their associated contracts (`requires:`, `ensures:`, `effects:`, etc.).
-
----
-
-## 7.2 File Extensions
+## 7.1 File Extensions
 
 | Extension   | Purpose                                        |
 |-------------|------------------------------------------------|
@@ -23,7 +15,7 @@ Every module is a single `.mn` file containing both contracts and implementation
 
 ---
 
-## 7.3 Directory Structure
+## 7.2 Directory Structure
 
 A Monel project follows a fixed directory layout:
 
@@ -48,11 +40,11 @@ my-project/
       mod.mn.test            # renderer module tests
 ```
 
-### 7.3.1 Module Root Files
+### 7.2.1 Module Root Files
 
 Each directory under `src/` that contains Monel source files MUST have a `mod.mn` file. This file serves as the directory's module root and defines what the directory exports. The top-level entry point uses `main.mn` instead of `mod.mn`.
 
-### 7.3.2 Nested Modules
+### 7.2.2 Nested Modules
 
 Modules nest according to directory structure. The module path mirrors the filesystem path:
 
@@ -65,11 +57,11 @@ Modules nest according to directory structure. The module path mirrors the files
 
 ---
 
-## 7.4 Visibility
+## 7.3 Visibility
 
 Visibility is controlled by the `exports` block declared in the `.mn` file.
 
-### 7.4.1 Exports
+### 7.3.1 Exports
 
 The `exports` block at the top of a `.mn` file declares the module's public API:
 
@@ -85,7 +77,7 @@ exports:
 
 Only items listed in `exports` are accessible from outside the module. Everything else is module-internal.
 
-### 7.4.2 Internal Items
+### 7.3.2 Internal Items
 
 Items not listed in `exports` are internal. They can be grouped under an `internal` block for documentation clarity, but this is optional -- unlisted items are internal by default:
 
@@ -102,7 +94,7 @@ internal:
   buffer_pool
 ```
 
-### 7.4.3 Re-exports
+### 7.3.3 Re-exports
 
 A module root (`mod.mn`) can re-export items from submodules:
 
@@ -120,7 +112,7 @@ re-exports:
 
 This allows `use terminal {Pty}` instead of requiring `use terminal/pty {Pty}`.
 
-### 7.4.4 Visibility Rules
+### 7.3.4 Visibility Rules
 
 1. `exports` items are visible to any module that imports this module.
 2. Internal items are visible only within the same module file and its tests.
@@ -141,11 +133,11 @@ visible_to:
 
 ---
 
-## 7.5 Import Syntax
+## 7.4 Import Syntax
 
 Monel uses the `use` keyword for imports. All imports are explicit -- there are no wildcard imports.
 
-### 7.5.1 Basic Import
+### 7.4.1 Basic Import
 
 ```
 use http/server {Config, serve}
@@ -159,7 +151,7 @@ The syntax is:
 use <module-path> {<item1>, <item2>, ...}
 ```
 
-### 7.5.2 Import Rules
+### 7.4.2 Import Rules
 
 1. **No wildcard imports.** `use http/server {*}` is a syntax error. Every imported symbol must be named explicitly.
 2. **No aliased module imports.** You cannot `use http/server as srv`. Module paths are always fully qualified.
@@ -173,7 +165,7 @@ use db/pool {Config as DbConfig}
 
 5. **Self-referential imports are forbidden.** A module cannot import from itself.
 
-### 7.5.3 Greppability Guarantee
+### 7.4.3 Greppability Guarantee
 
 Because every import names its items explicitly, any occurrence of a symbol in the codebase can be traced to its definition by searching for either:
 - Its declaration in a `.mn` file, or
@@ -181,7 +173,7 @@ Because every import names its items explicitly, any occurrence of a symbol in t
 
 The compiler maintains this property. If a symbol is used but not imported or locally defined, the compiler emits an error with a suggestion of which `use` statement to add.
 
-### 7.5.4 Standard Library Imports
+### 7.4.4 Standard Library Imports
 
 The standard library is imported from the `std` namespace:
 
@@ -196,7 +188,7 @@ A minimal prelude is automatically in scope for every module. The prelude includ
 
 ---
 
-## 7.6 Module as Public API
+## 7.5 Module as Public API
 
 When a dependency is added to a project, consumers see only the dependency's exported function signatures and their contracts. Implementation details of dependencies are not accessible.
 
@@ -206,7 +198,7 @@ This means:
 3. LLMs generating code against a dependency need only the exported contracts for full context.
 4. `monel query "how do I make an HTTP request?"` searches exported contracts, not implementations.
 
-### 7.6.1 Module Size Guidelines
+### 7.5.1 Module Size Guidelines
 
 The compiler enforces advisory size limits to keep modules reviewable:
 
@@ -221,11 +213,11 @@ A `monel.team` file can override these thresholds via `max_module_lines` in the 
 
 ---
 
-## 7.7 Project Manifest: `monel.project`
+## 7.6 Project Manifest: `monel.project`
 
 The project manifest is a TOML file at the project root.
 
-### 7.7.1 Full Schema
+### 7.6.1 Full Schema
 
 ```toml
 [package]
@@ -265,7 +257,7 @@ model = "claude-sonnet-4-20250514"
 api_key_env = "ANTHROPIC_API_KEY"
 ```
 
-### 7.7.2 `[package]` Section
+### 7.6.2 `[package]` Section
 
 | Field         | Required | Description                                    |
 |---------------|----------|------------------------------------------------|
@@ -277,7 +269,7 @@ api_key_env = "ANTHROPIC_API_KEY"
 | `repository`  | No       | Source repository URL                          |
 | `authors`     | No       | List of author strings                         |
 
-### 7.7.3 `[dependencies]` Section
+### 7.6.3 `[dependencies]` Section
 
 Dependencies can be specified in several forms:
 
@@ -303,7 +295,7 @@ Version strings follow semver. The version requirement syntax supports:
 - `"~1.2.0"` -- approximately 1.2.0 (>=1.2.0, <1.3.0)
 - `">=1.0, <2.0"` -- range
 
-### 7.7.4 `[tools]` and `[tools.dev]` Sections
+### 7.6.4 `[tools]` and `[tools.dev]` Sections
 
 The `[tools]` section declares project-level CLI tool dependencies -- executable binaries that the project's workflow requires (code generators, database migrators, linters, etc.). The `[tools.dev]` subsection declares tools needed only during development (profilers, benchmarking harnesses, etc.).
 
@@ -413,7 +405,7 @@ If the tool is not installed, `monel run` prints an error directing the user to 
 
 A single lockfile ensures fully reproducible builds and environments. See Section 7.10.1 for the lockfile lifecycle.
 
-### 7.7.5 `[targets]` Section
+### 7.6.5 `[targets]` Section
 
 Monel supports multiple compilation targets:
 
@@ -436,7 +428,7 @@ features = ["no-threads"]
 opt-level = "size"       # optimize for size
 ```
 
-### 7.7.6 `[llm]` Section
+### 7.6.6 `[llm]` Section
 
 The LLM section configures AI-assisted tooling (`monel test --gen-llm-tests`, `monel suggest`, etc.). The compiler itself never uses an LLM. All verification is deterministic.
 
@@ -460,11 +452,11 @@ Supported providers:
 
 ---
 
-## 7.8 Team Configuration: `monel.team`
+## 7.7 Team Configuration: `monel.team`
 
 The team configuration file captures organizational conventions. It is not enforced by the compiler directly but is used by `monel generate` and `monel refactor` to produce code matching team standards.
 
-### 7.8.1 Full Schema
+### 7.7.1 Full Schema
 
 ```toml
 [org]
@@ -508,7 +500,7 @@ style_references = [
 ]
 ```
 
-### 7.8.2 Section Details
+### 7.7.2 Section Details
 
 **`[org]`** -- Organizational metadata used by the code generator to make architecture-appropriate decisions. These are freeform strings; the generator interprets them contextually.
 
@@ -522,11 +514,11 @@ style_references = [
 
 ---
 
-## 7.9 Policy Configuration: `monel.policy`
+## 7.8 Policy Configuration: `monel.policy`
 
 The policy file defines enforced rules. Unlike `monel.team`, policy rules produce compiler errors (not just warnings).
 
-### 7.9.1 Full Schema
+### 7.8.1 Full Schema
 
 ```toml
 [effects]
@@ -566,7 +558,7 @@ forbid_logging = [
 ]
 ```
 
-### 7.9.2 Section Details
+### 7.8.2 Section Details
 
 **`[effects]`** -- Rules about effect usage.
 - `forbidden_combinations`: pairs of effects that must never appear in the same function. If a function transitively produces both effects, the compiler emits an error.
@@ -584,11 +576,11 @@ forbid_logging = [
 
 ---
 
-## 7.10 Query Index: `.monel/index.json`
+## 7.9 Query Index: `.monel/index.json`
 
 The `.monel/index.json` file is a pre-built search index generated by `monelc` during compilation. It enables instant responses from `monel query` without requiring a full project scan.
 
-### 7.10.1 Index Contents
+### 7.9.1 Index Contents
 
 The index contains:
 - All exported symbols with their module paths
@@ -599,7 +591,7 @@ The index contains:
 - Module dependency graph
 - Symbol cross-references
 
-### 7.10.2 Index Format
+### 7.9.2 Index Format
 
 ```json
 {
@@ -639,7 +631,7 @@ The index contains:
 }
 ```
 
-### 7.10.3 Index Lifecycle
+### 7.9.3 Index Lifecycle
 
 1. The index is generated as a side effect of compilation.
 2. `monel query` reads the index and does not require recompilation.
@@ -649,9 +641,9 @@ The index contains:
 
 ---
 
-## 7.11 Dependency Resolution and Versioning
+## 7.10 Dependency Resolution and Versioning
 
-### 7.11.1 Version Resolution
+### 7.10.1 Version Resolution
 
 Monel uses a SAT-solver-based dependency resolver (similar to Cargo/pub). The resolver:
 
@@ -662,7 +654,7 @@ Monel uses a SAT-solver-based dependency resolver (similar to Cargo/pub). The re
 
 The `monel.lock` file covers library dependencies, dev dependencies, and tool binaries (see Section 7.7.4). It MUST be committed to version control for applications. Libraries SHOULD NOT commit `monel.lock`.
 
-### 7.11.2 Automatic Semver from Export Diffs
+### 7.10.2 Automatic Semver from Export Diffs
 
 When publishing a package, the compiler can automatically determine the correct semver bump by diffing the current exported signatures and contracts against the previously published version:
 
@@ -684,7 +676,7 @@ When publishing a package, the compiler can automatically determine the correct 
 
 This analysis is performed by `monel publish` and can be previewed with `monel semver-check`.
 
-### 7.11.3 Export-Only Dependencies
+### 7.10.3 Export-Only Dependencies
 
 When a dependency is fetched, only its exported signatures, contracts, and compiled artifacts are downloaded. Source implementation files are never distributed unless explicitly opted in. This means:
 
@@ -693,7 +685,7 @@ When a dependency is fetched, only its exported signatures, contracts, and compi
 3. The total download size is minimized.
 4. LLMs generating code against a dependency need only the exported contracts.
 
-### 7.11.4 Dependency Auditing
+### 7.10.4 Dependency Auditing
 
 `monel audit` scans the dependency tree for:
 - Known vulnerabilities (from a registry advisory database)
@@ -702,9 +694,9 @@ When a dependency is fetched, only its exported signatures, contracts, and compi
 
 ---
 
-## 7.12 Module Path Resolution
+## 7.11 Module Path Resolution
 
-### 7.12.1 Resolution Algorithm
+### 7.11.1 Resolution Algorithm
 
 Given a `use` statement like `use terminal/pty {Pty}`, the compiler resolves the module path as follows:
 
@@ -714,12 +706,12 @@ Given a `use` statement like `use terminal/pty {Pty}`, the compiler resolves the
 4. **Standard library:** Check if the path begins with `std/`.
 5. **Error:** If none match, emit a "module not found" error with suggestions.
 
-### 7.12.2 Ambiguity Rules
+### 7.11.2 Ambiguity Rules
 
 - A local module and a dependency MUST NOT share the same root name. The compiler emits an error if `src/http/` exists and `http` is also listed in `[dependencies]`.
 - If disambiguation is needed, local modules take precedence. Dependencies can be accessed via their full registry name: `use registry/http/server {serve}`.
 
-### 7.12.3 Circular Dependencies
+### 7.11.3 Circular Dependencies
 
 Circular dependencies between modules are forbidden. The compiler builds a module dependency graph and rejects cycles with a clear error message showing the cycle path:
 
@@ -734,7 +726,7 @@ error: circular dependency detected
 
 ---
 
-## 7.13 Module Initialization
+## 7.12 Module Initialization
 
 Modules do not have implicit initialization code. There are no `init()` functions that run at import time. All initialization is explicit:
 
@@ -749,7 +741,7 @@ If a module requires one-time setup, it exposes a factory function. The caller d
 
 ---
 
-## 7.14 Conditional Compilation
+## 7.13 Conditional Compilation
 
 Monel supports target-conditional code through the `when` attribute:
 
@@ -776,7 +768,7 @@ Conditional compilation is declared alongside contracts so that consumers of the
 
 ---
 
-## 7.15 Module Compilation Order
+## 7.14 Module Compilation Order
 
 The compiler determines compilation order from the dependency graph:
 

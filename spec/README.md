@@ -12,7 +12,7 @@ Functions in Monel declare contracts (`requires:`, `ensures:`, `effects:`, `pani
 
 | Chapter | Topic |
 |---------|-------|
-| [1. Overview](01-overview.md) | Philosophy, architecture, design principles |
+| [1. Overview](01-overview.md) | Model, pipeline, invariants |
 | [2. Contract Syntax](02-intent-syntax.md) | EBNF grammar for contracts in `.mn` files |
 | [3. Implementation Syntax](03-impl-syntax.md) | EBNF grammar for `.mn` files |
 | [4. Type System](04-type-system.md) | Structural/nominal types, ownership, generics |

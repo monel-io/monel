@@ -1,10 +1,4 @@
-# 11. Tooling and AI Integration
-
-This chapter specifies Monel's toolchain: the compiler as a query oracle, the context-gathering system, edit-compatible errors, refactoring commands, and the development server. These features replace ad-hoc file searching with structured, semantic queries for AI coding tools.
-
-The design principle: **every question an AI tool would answer by grepping becomes a CLI command**. The compiler knows more about the code than any text search can discover. Monel exposes that knowledge directly.
-
----
+# 11. Tooling
 
 ## 11.1 The Query Oracle
 

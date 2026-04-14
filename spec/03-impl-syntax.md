@@ -1,12 +1,5 @@
 # 3. Implementation Syntax
 
-**Version:** 0.1.0-draft
-**Status:** Working Draft
-**Domain:** monel.io
-**Date:** 2026-03-18
-
----
-
 ## 3.1 Syntax Overview
 
 ### 3.1.1 Hybrid Syntax

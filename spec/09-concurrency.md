@@ -1,21 +1,12 @@
 # 9. Concurrency
 
-## 9.1 Overview
+Monel provides structured concurrency with effect tracking. Asynchronous execution is modeled as the `async` effect on function signatures. Child tasks cannot outlive their parent scope. Data race freedom is guaranteed through ownership. Communication uses typed bounded channels.
 
-Monel provides structured concurrency with full effect tracking. Asynchronous execution is modeled as an effect -- `async` -- that must be declared on function signatures. The concurrency model combines:
-
-1. **Structured scoping** -- child tasks cannot outlive their parent scope.
-2. **Effect tracking** -- the `async` effect propagates through the call graph like any other effect.
-3. **Ownership-based safety** -- data race freedom is guaranteed through the type system, using unique mutable references (Rust-like ownership).
-4. **Typed channels** -- communication between concurrent tasks uses typed, bounded channels.
-
-The compiler enforces these properties at compile time.
-
-## 9.2 The `async` Effect
+## 9.1 The `async` Effect
 
 Asynchronous execution is an effect. Any function that performs asynchronous work must declare the `async` effect.
 
-### 9.2.1 Declaration
+### 9.1.1 Declaration
 
 ```
 fn fetch_data(url: Url) -> Result<Data, HttpError>
@@ -26,7 +17,7 @@ fn fetch_data(url: Url) -> Result<Data, HttpError>
 
 The `async` effect is contagious: any function that calls an `async` function must itself be `async`. The compiler verifies this transitively.
 
-### 9.2.2 Colored Functions
+### 9.1.2 Colored Functions
 
 Monel uses colored functions -- `async` and non-`async` functions are distinct types. A non-async function cannot call an async function without an explicit bridge. This is intentional: it makes the async boundary visible in the code.
 
@@ -47,7 +38,7 @@ error: function calls async function but does not declare `async` effect
    |   effects: [async, Http.send]
 ```
 
-### 9.2.3 `await`
+### 9.1.3 `await`
 
 Asynchronous expressions are awaited with the `await` keyword:
 
@@ -71,7 +62,7 @@ fn fetch_user(id: UserId) -> Result<User, ApiError>
 
 The order is `try await expr` -- first await the future, then propagate the error.
 
-## 9.3 Structured Concurrency
+## 9.2 Structured Concurrency
 
 All concurrency in Monel is structured. Tasks are launched within scopes, and a scope does not complete until all its child tasks complete. There is no way to launch a detached task that outlives its parent.
 
@@ -97,7 +88,7 @@ graph TD
     J --> R["return result"]
 ```
 
-### 9.3.1 Task Scopes
+### 9.2.1 Task Scopes
 
 The `scope` block creates a concurrency scope:
 
@@ -113,7 +104,7 @@ fn process_batch(urls: Vec<Url>) -> Result<Vec<Data>, Error>
 
 The scope `s` is a task spawner. Tasks spawned on `s` are guaranteed to complete before the scope exits. If any task panics, the scope cancels all remaining tasks and propagates the panic.
 
-### 9.3.2 Scope Lifetime Rules
+### 9.2.2 Scope Lifetime Rules
 
 1. A scope blocks until all spawned tasks complete.
 2. Tasks spawned in a scope cannot reference data that is dropped before the scope ends.
@@ -140,7 +131,7 @@ fn pipeline(input: Vec<Data>) -> Result<Vec<Output>, Error>
     Ok(transformed)
 ```
 
-### 9.3.3 Contracts for Scoped Concurrency
+### 9.2.3 Contracts for Scoped Concurrency
 
 Concurrent work is reflected via the `async` effect and descriptive documentation:
 
@@ -153,11 +144,11 @@ fn process_batch(urls: Vec<Url>) -> Result<Vec<Data>, Error>
 
 The function signature does not need to specify the concurrency strategy (scope, spawn count, etc.). That is an implementation detail. The `async` effect is sufficient to signal that concurrency occurs.
 
-## 9.4 Spawn
+## 9.3 Spawn
 
 `spawn` launches a concurrent task within a scope.
 
-### 9.4.1 Basic Spawn
+### 9.3.1 Basic Spawn
 
 ```
 scope |s|
@@ -167,7 +158,7 @@ scope |s|
 
 `spawn` returns a `TaskHandle<T>` that can be awaited to get the task's result.
 
-### 9.4.2 Spawn Captures
+### 9.3.2 Spawn Captures
 
 Closures passed to `spawn` follow Monel's ownership rules:
 
@@ -187,7 +178,7 @@ fn process(data: Vec<Item>) -> Vec<Result>
     ).map(|h| await h).collect()
 ```
 
-### 9.4.3 Spawn Limits
+### 9.3.3 Spawn Limits
 
 The runtime limits the number of concurrent tasks per scope. The default limit is determined by the runtime (typically 2x CPU cores for compute-bound, 256 for I/O-bound). Custom limits can be set:
 
@@ -199,11 +190,11 @@ scope.with_limit(32) |s|
     .collect()
 ```
 
-## 9.5 Channels
+## 9.4 Channels
 
 Channels provide typed, safe communication between concurrent tasks. They are the primary mechanism for passing data between tasks that cannot share references.
 
-### 9.5.1 Channel Types
+### 9.4.1 Channel Types
 
 Monel provides three channel types:
 
@@ -213,7 +204,7 @@ Monel provides three channel types:
 | `UnboundedChannel<T>`  | Unbounded multi-producer multi-consumer | Unlimited   |
 | `Oneshot<T>`           | Single-value, single-producer single-consumer | 1           |
 
-### 9.5.2 `Channel<T>` -- Bounded MPMC
+### 9.4.2 `Channel<T>` -- Bounded MPMC
 
 ```
 use std/async {Channel}
@@ -245,7 +236,7 @@ fn producer_consumer() -> Result<(), Error>
 - Dropping a sender decrements the sender count. The channel closes when the last sender is dropped.
 - Dropping a receiver decrements the receiver count. Sends fail when the last receiver is dropped.
 
-### 9.5.3 `UnboundedChannel<T>`
+### 9.4.3 `UnboundedChannel<T>`
 
 ```
 use std/async {UnboundedChannel}
@@ -255,7 +246,7 @@ let (tx, rx) = UnboundedChannel.new::<LogEntry>()
 
 Unbounded channels never block on `send`. They should be used only when backpressure is not a concern (e.g., logging, metrics). The compiler emits a lint warning if `UnboundedChannel` is used in performance-sensitive code paths.
 
-### 9.5.4 `Oneshot<T>`
+### 9.4.4 `Oneshot<T>`
 
 ```
 use std/async {Oneshot}
@@ -275,7 +266,7 @@ fn request_response() -> Result<Response, Error>
 
 Oneshot channels are for single-value communication. Sending more than once is a compile-time error (the `tx` is consumed on send). Receiving more than once is also a compile-time error.
 
-### 9.5.5 Channel Ownership
+### 9.4.5 Channel Ownership
 
 Channels follow Monel's ownership rules:
 - `tx` (sender) can be cloned to create multiple producers.
@@ -283,11 +274,11 @@ Channels follow Monel's ownership rules:
 - When the last `tx` clone is dropped, the channel closes for receivers.
 - When the last `rx` clone is dropped, subsequent sends fail.
 
-## 9.6 Select
+## 9.5 Select
 
 `select` waits on multiple asynchronous operations simultaneously, proceeding with the first one that completes.
 
-### 9.6.1 Basic Select
+### 9.5.1 Basic Select
 
 ```
 use std/async {select}
@@ -301,7 +292,7 @@ fn handle_events(input_rx: Channel<Input>, timer: Timer) -> Result<(), Error>
         try handle_tick()
 ```
 
-### 9.6.2 Select Syntax
+### 9.5.2 Select Syntax
 
 ```
 select
@@ -314,7 +305,7 @@ select
 
 Each arm is an asynchronous expression. `select` polls all arms concurrently and executes the body of the first arm that completes. If multiple arms complete simultaneously, one is chosen non-deterministically (but fairly over repeated iterations).
 
-### 9.6.3 Select with Timeout
+### 9.5.3 Select with Timeout
 
 ```
 select
@@ -324,7 +315,7 @@ select
     Err(Error.Timeout("request timed out after 5 seconds"))
 ```
 
-### 9.6.4 Select with Default
+### 9.5.4 Select with Default
 
 A `default` arm executes immediately if no other arm is ready:
 
@@ -337,7 +328,7 @@ select
     idle_work()
 ```
 
-### 9.6.5 Biased Select
+### 9.5.5 Biased Select
 
 By default, `select` is fair. Use `select biased` to prioritize earlier arms:
 
@@ -356,7 +347,7 @@ select biased
 
 In biased select, if multiple arms are ready, the first listed arm is always chosen.
 
-## 9.7 Concurrent Map
+## 9.6 Concurrent Map
 
 `concurrent_map` is a built-in primitive for parallel iteration:
 
@@ -367,7 +358,7 @@ fn fetch_all(urls: Vec<Url>) -> Result<Vec<Response>, HttpError>
   urls.concurrent_map(|url| fetch(url)).collect()
 ```
 
-### 9.7.1 Concurrency Limit
+### 9.6.1 Concurrency Limit
 
 ```
 # Process at most 10 items concurrently
@@ -376,7 +367,7 @@ urls.concurrent_map(|url| fetch(url))
   .collect()
 ```
 
-### 9.7.2 Ordered vs Unordered
+### 9.6.2 Ordered vs Unordered
 
 ```
 # Ordered: results maintain input order (default)
@@ -386,7 +377,7 @@ let results = urls.concurrent_map(|url| fetch(url)).collect()
 let results = urls.concurrent_map(|url| fetch(url)).unordered().collect()
 ```
 
-### 9.7.3 Error Handling in Concurrent Map
+### 9.6.3 Error Handling in Concurrent Map
 
 ```
 # Fail fast: stop on first error
@@ -397,9 +388,9 @@ let results: Vec<Result<Response, HttpError>> =
   urls.concurrent_map(|url| fetch(url)).collect_all()
 ```
 
-## 9.8 Ownership and Data Race Freedom
+## 9.7 Ownership and Data Race Freedom
 
-### 9.8.1 Ownership Model
+### 9.7.1 Ownership Model
 
 Monel's ownership model is the foundation of its concurrency safety. The rules are:
 
@@ -409,7 +400,7 @@ Monel's ownership model is the foundation of its concurrency safety. The rules a
 4. Values can be borrowed mutably (`&mut T`) exactly once, with no concurrent immutable borrows.
 5. These rules apply across task boundaries.
 
-### 9.8.2 Send and Sync Traits
+### 9.7.2 Send and Sync Traits
 
 Types are classified by their concurrency properties:
 
@@ -420,7 +411,7 @@ Types are classified by their concurrency properties:
 
 The compiler automatically derives `Send` and `Sync` for types whose fields are all `Send` and `Sync`. Types containing raw pointers or interior mutability must opt in explicitly.
 
-### 9.8.3 Preventing Data Races
+### 9.7.3 Preventing Data Races
 
 The compiler prevents data races at compile time:
 
@@ -460,9 +451,9 @@ fn safe_concurrent_mutation(data: Vec<Int32>) -> Vec<Int32>
   data.into_inner()
 ```
 
-## 9.9 Synchronization Primitives
+## 9.8 Synchronization Primitives
 
-### 9.9.1 `Mutex<T>`
+### 9.8.1 `Mutex<T>`
 
 A mutual exclusion lock protecting a value of type `T`:
 
@@ -487,7 +478,7 @@ assert(counter.into_inner() == 10)
 - The guard dereferences to `&mut T`, providing exclusive access.
 - Deadlock detection: the runtime detects simple deadlocks (two tasks each waiting on the other's lock) and panics with a diagnostic message. Complex deadlocks (cycles of length > 2) are detected in debug mode.
 
-### 9.9.2 `RwLock<T>`
+### 9.8.2 `RwLock<T>`
 
 A reader-writer lock allowing concurrent reads or exclusive writes:
 
@@ -518,7 +509,7 @@ scope |s|
 - `try_read()` and `try_write()` are non-blocking variants.
 - Writer starvation is prevented: if a writer is waiting, new readers queue behind it.
 
-### 9.9.3 `Atomic<T>`
+### 9.8.3 `Atomic<T>`
 
 Lock-free atomic operations for primitive types:
 
@@ -552,9 +543,9 @@ assert(counter.load(Ordering.SeqCst) == 1000)
 
 **Memory orderings:** `Relaxed`, `Acquire`, `Release`, `AcqRel`, `SeqCst`. These follow the C++11 memory model semantics.
 
-## 9.10 Cancellation
+## 9.9 Cancellation
 
-### 9.10.1 Structured Cancellation
+### 9.9.1 Structured Cancellation
 
 Cancellation propagates structurally: cancelling a scope cancels all its child tasks.
 
@@ -570,7 +561,7 @@ fn fetch_with_timeout(url: Url) -> Result<Response, Error>
 
 When a `select` arm completes, the other arms are cancelled. The cancelled tasks' destructors run, releasing resources.
 
-### 9.10.2 Explicit Cancellation
+### 9.9.2 Explicit Cancellation
 
 Tasks can be explicitly cancelled via their handle:
 
@@ -587,7 +578,7 @@ scope |s|
     | Err(TaskError.Cancelled) => log("task was cancelled")
 ```
 
-### 9.10.3 Cancellation Safety
+### 9.9.3 Cancellation Safety
 
 A function is **cancellation-safe** if being cancelled at any await point does not leave the system in an inconsistent state. The compiler does not verify cancellation safety automatically (it is undecidable in general), but it can be documented:
 
@@ -604,7 +595,7 @@ fn transfer_funds(from: Account, to: Account, amount: Money) -> Result<(), Trans
 
 The `cancellation: safe` annotation is a declaration for code reviewers and generators. It signals that the function handles cancellation correctly (e.g., by using database transactions).
 
-### 9.10.4 Cancellation Tokens
+### 9.9.4 Cancellation Tokens
 
 For fine-grained cancellation control, use cancellation tokens:
 
@@ -621,11 +612,11 @@ fn long_running_job(token: CancellationToken) -> Result<Output, Error>
 
 Cancellation tokens can be passed through the call graph. They are lightweight and cloneable.
 
-## 9.11 Event Loop Integration
+## 9.10 Event Loop Integration
 
 For interactive applications (terminal emulators, TUI apps, games), Monel provides first-class event loop primitives.
 
-### 9.11.1 Event Loop
+### 9.10.1 Event Loop
 
 ```
 use std/async {EventLoop, Event}
@@ -642,7 +633,7 @@ fn run_terminal() -> Result<(), Error>
   )
 ```
 
-### 9.11.2 Event Sources
+### 9.10.2 Event Sources
 
 The event loop can listen to multiple event sources:
 
@@ -660,7 +651,7 @@ event_loop.register_signal(Signal.SIGWINCH)
 event_loop.register_signal(Signal.SIGTERM)
 ```
 
-### 9.11.3 Select Over I/O Events
+### 9.10.3 Select Over I/O Events
 
 `select` integrates with the event loop for polling multiple sources:
 
@@ -680,7 +671,7 @@ fn terminal_loop(pty: Pty, renderer: Renderer) -> Result<(), Error>
         try renderer.flush()
 ```
 
-### 9.11.4 Contracts for Event-Driven Functions
+### 9.10.4 Contracts for Event-Driven Functions
 
 ```
 fn run_terminal(config: TerminalConfig) -> Result<(), TerminalError>
@@ -689,9 +680,9 @@ fn run_terminal(config: TerminalConfig) -> Result<(), TerminalError>
   // ...
 ```
 
-## 9.12 Timeout and Deadline Support
+## 9.11 Timeout and Deadline Support
 
-### 9.12.1 Timeouts
+### 9.11.1 Timeouts
 
 ```
 use std/async {timeout}
@@ -704,7 +695,7 @@ fn fetch_with_timeout(url: Url) -> Result<Response, Error>
 
 `timeout(duration, future)` wraps a future with a timeout. If the future does not complete within the duration, it is cancelled and `Err(Elapsed)` is returned.
 
-### 9.12.2 Deadlines
+### 9.11.2 Deadlines
 
 Deadlines are absolute time points, as opposed to relative durations:
 
@@ -725,7 +716,7 @@ fn batch_process(items: Vec<Item>) -> Result<Vec<Output>, Error>
 
 Deadlines are more appropriate than timeouts when processing multiple items: the total time budget is fixed regardless of how many items have been processed.
 
-### 9.12.3 Timeout in Function Contracts
+### 9.11.3 Timeout in Function Contracts
 
 Timeouts can be documented in function contracts for clarity:
 
@@ -740,9 +731,9 @@ fn fetch_data(url: Url) -> Result<Data, FetchError>
   // implementation...
 ```
 
-## 9.13 Concurrency Patterns
+## 9.12 Concurrency Patterns
 
-### 9.13.1 Fan-Out / Fan-In
+### 9.12.1 Fan-Out / Fan-In
 
 Distribute work across multiple tasks and collect results:
 
@@ -776,7 +767,7 @@ fn fan_out_fan_in(requests: Vec<Request>) -> Result<Vec<Response>, Error>
   requests.concurrent_map(|req| process_request(req)).collect()
 ```
 
-### 9.13.2 Pipeline
+### 9.12.2 Pipeline
 
 Process data through a series of stages, each running concurrently:
 
@@ -817,7 +808,7 @@ fn pipeline(input: Channel<RawData>) -> Result<(), Error>
   Ok(())
 ```
 
-### 9.13.3 Supervisor
+### 9.12.3 Supervisor
 
 Restart tasks that fail:
 
@@ -837,7 +828,7 @@ fn supervised_worker(config: WorkerConfig) -> Result<(), Error>
         return Err(Error.WorkerFailed("exceeded max restarts: {e}"))
 ```
 
-### 9.13.4 Worker Pool
+### 9.12.4 Worker Pool
 
 A fixed pool of workers processing from a shared queue:
 
@@ -857,7 +848,7 @@ fn worker_pool(jobs: Channel<Job>, num_workers: UInt32) -> Result<(), Error>
   Ok(())
 ```
 
-### 9.13.5 Barrier
+### 9.12.5 Barrier
 
 Synchronize multiple tasks at a rendezvous point:
 
@@ -883,9 +874,9 @@ fn parallel_phases(data: Vec<Chunk>, num_workers: UInt32) -> Result<(), Error>
   Ok(())
 ```
 
-## 9.14 Thread-Safety Guarantees
+## 9.13 Thread-Safety Guarantees
 
-### 9.14.1 Compile-Time Guarantees
+### 9.13.1 Compile-Time Guarantees
 
 The Monel type system provides the following compile-time guarantees:
 
@@ -894,7 +885,7 @@ The Monel type system provides the following compile-time guarantees:
 3. **No dangling references.** Structured concurrency ensures child tasks cannot outlive the data they reference.
 4. **Channel type safety.** Channels are typed; sending a value of the wrong type is a compile-time error.
 
-### 9.14.2 Runtime Guarantees
+### 9.13.2 Runtime Guarantees
 
 The runtime provides additional guarantees:
 
@@ -902,7 +893,7 @@ The runtime provides additional guarantees:
 2. **Stack overflow protection.** Each task has a bounded stack. Overflow triggers a panic rather than undefined behavior.
 3. **Fair scheduling.** The runtime scheduler is work-stealing and fair across tasks.
 
-### 9.14.3 What Is NOT Guaranteed
+### 9.13.3 What Is NOT Guaranteed
 
 The following are NOT guaranteed by the compiler or runtime:
 
@@ -911,9 +902,9 @@ The following are NOT guaranteed by the compiler or runtime:
 3. **Deterministic execution order.** Tasks may execute in any order unless explicitly synchronized.
 4. **Cancellation safety** of user code (see section 9.10.3).
 
-## 9.15 Async Runtime
+## 9.14 Async Runtime
 
-### 9.15.1 Runtime Configuration
+### 9.14.1 Runtime Configuration
 
 The async runtime is configured at program startup:
 
@@ -939,7 +930,7 @@ fn main() -> Result<(), Error>
   Ok(())
 ```
 
-### 9.15.2 Blocking Operations
+### 9.14.2 Blocking Operations
 
 Blocking operations (CPU-heavy computation, synchronous I/O) must not be performed on the async worker threads. Use `spawn_blocking` to run them on a dedicated thread pool:
 
@@ -956,7 +947,7 @@ fn process_image(image: Image) -> Result<Image, Error>
 
 The compiler emits a lint warning if a function known to block (e.g., `std/io/read_file_sync`) is called inside an `async` context without `spawn_blocking`.
 
-### 9.15.3 Runtime Configuration in Project
+### 9.14.3 Runtime Configuration in Project
 
 The runtime configuration is a deployment concern. The effects system captures whether a function uses async, and `monel.project` can specify default runtime settings:
 
@@ -968,9 +959,9 @@ io = true
 timer = true
 ```
 
-## 9.16 Concurrency in Function Contracts
+## 9.15 Concurrency in Function Contracts
 
-### 9.16.1 What Contracts Capture
+### 9.15.1 What Contracts Capture
 
 Contracts capture the **what**, not the **how** of concurrency:
 
@@ -986,7 +977,7 @@ fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
     .collect()
 ```
 
-### 9.16.2 What Contracts Do NOT Capture
+### 9.15.2 What Contracts Do NOT Capture
 
 - The specific concurrency primitive used (spawn, channel, select).
 - The number of worker tasks.
@@ -996,7 +987,7 @@ fn process_batch(items: Vec<Item>) -> Result<Vec<Output>, Error>
 
 These are implementation details. If they are architecturally significant, they can be documented in the `doc:` description, but the compiler does not enforce them.
 
-### 9.16.3 Compiler Verification for Concurrency
+### 9.15.3 Compiler Verification for Concurrency
 
 The compiler verifies:
 1. If the function declares the `async` effect, the implementation uses async operations.

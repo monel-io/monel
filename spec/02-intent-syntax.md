@@ -1,12 +1,5 @@
 # 2. Contract Syntax
 
-**Version:** 0.2.0-draft
-**Status:** Working Draft
-**Domain:** monel.io
-**Date:** 2026-03-18
-
----
-
 ## 2.1 Contract Block
 
 A function's contracts appear between its signature and its body, distinguished by contract keywords (`requires:`, `ensures:`, `effects:`, etc.). The parser treats any line beginning with a contract keyword at the appropriate indentation level as part of the contract block.
@@ -30,7 +23,7 @@ The following keywords introduce contract clauses. Each may appear at most once 
 | `fails:` | Functions | Shorthand declaring which error variants the function produces |
 | `doc:` | Any declaration | Optional free-text documentation; never compiled or verified |
 
-### 2.3.1 `requires:`
+### 2.2.1 `requires:`
 
 Declares preconditions. Each clause is a boolean expression over the function's parameters. The compiler translates these to SMT assertions and verifies them at every call site.
 
@@ -56,7 +49,7 @@ error[S0101]: precondition `arr.is_sorted()` not proven at call site
 
 Multiple `requires:` clauses are conjoined. Writing two clauses is equivalent to writing one clause with `and`.
 
-### 2.3.2 `ensures:`
+### 2.2.2 `ensures:`
 
 Declares postconditions. Each clause is a boolean expression over the function's return value and parameters. The keyword `result` refers to the return value. The function `old(expr)` captures the value of `expr` at function entry.
 
@@ -96,7 +89,7 @@ The compiler verifies each conditional clause on the corresponding code paths:
 
 Per-error-variant postconditions enable verification that a function preserves specific invariants on each failure path. For example, `err(Overflow) => self == old(self)` asserts rollback on overflow.
 
-### 2.3.3 `effects:`
+### 2.2.3 `effects:`
 
 Declares the set of side effects the function may perform. The compiler infers the actual effects from the function body and checks that the inferred set is a subset of the declared set.
 
@@ -110,7 +103,7 @@ If the body performs an undeclared effect, compilation fails. If the body does n
 
 A function with no `effects:` declaration is pure. See Chapter 5 (Effect System) for the full specification.
 
-### 2.3.4 `panics:`
+### 2.2.4 `panics:`
 
 Declares the panic behavior of a function. Two forms:
 
@@ -158,7 +151,7 @@ fn format(template: String, args: Vec<String>) -> String
 
 When `panics:` is omitted entirely, the function may panic under unspecified conditions (the default). This is different from `panics: never` (proven panic-free) and `panics: <condition>` (documented, compiler-checked panic conditions).
 
-### 2.3.5 `complexity:`
+### 2.2.5 `complexity:`
 
 Declares an asymptotic upper bound. The optimizer must not introduce transformations that violate this bound.
 
@@ -178,7 +171,7 @@ fn find_greeting(self: Greeter, substring: String) -> Option<String>
 
 The compiler uses `complexity:` as an optimizer constraint: if an optimization pass would change the asymptotic behavior (for example, introducing a nested loop over the input), the pass is rejected. The compiler does not prove the implementation meets the bound; it prevents the optimizer from exceeding it.
 
-### 2.3.6 `invariant:`
+### 2.2.6 `invariant:`
 
 Declares a predicate that must hold at specified points. Two forms:
 
@@ -213,7 +206,7 @@ fn find_greeting(self: Greeter, substring: String) -> Option<String>
 
 Loop invariants help the SMT solver verify `ensures:` clauses that depend on loop behavior. When the solver cannot prove a postcondition involving a loop, it suggests adding a loop invariant.
 
-### 2.3.7 `fails:`
+### 2.2.7 `fails:`
 
 Shorthand for declaring which error variants a function can produce. This does not introduce formal postconditions; it declares the error variant set for exhaustiveness checking.
 
@@ -235,7 +228,7 @@ The string after each variant name is a human-readable description. The compiler
 
 `fails:` and conditional `ensures:` clauses (`err(V) => ...`) can coexist. `fails:` declares the error variant set; conditional `ensures:` clauses add postconditions per variant.
 
-### 2.3.8 `doc:`
+### 2.2.8 `doc:`
 
 Optional free-text documentation. The compiler parses and preserves `doc:` text for tooling (IDE hover, `monel query`, documentation generation) but never compiles or verifies it.
 

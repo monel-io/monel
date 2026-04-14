@@ -1,11 +1,5 @@
 # 10. Systems Programming
 
-This chapter specifies Monel's facilities for unsafe operations, foreign function interfaces, raw I/O, memory management, and GPU rendering. These features enable Monel to target the same domain as C, C++, and Rust (systems software, terminal emulators, editors, and performance-critical applications) while preserving the contract/implementation architecture.
-
-The `unsafe` effect makes low-level operations visible in the function signature. The compiler verifies that safety invariants are documented. The hot-swap runtime requires explicit confirmation before reloading unsafe functions.
-
----
-
 ## 10.1 The `unsafe` Effect
 
 `unsafe` is a first-class effect in Monel's effect system. Any operation that bypasses the language's safety guarantees (raw pointer access, FFI calls, inline assembly, unchecked casts) requires the `unsafe` effect.

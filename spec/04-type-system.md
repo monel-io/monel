@@ -1,22 +1,6 @@
 # 4. Type System
 
-This chapter specifies the Monel type system, including primitive and composite types, structural and nominal typing, refinement types, generics, traits, ownership and borrowing, type inference, and the relationship between contracts and implementation.
-
----
-
-## 4.1 Design Principles
-
-The Monel type system is designed around three goals:
-
-1. **Expressiveness**: types describe *what* data means, not just what shape it has. Refinement types, algebraic constraints, and contracts let authors specify invariants that the compiler enforces.
-
-2. **Writability**: the type system uses standard, predictable syntax. Type inference within function bodies reduces boilerplate. Explicit signatures at function boundaries provide unambiguous context for code generation.
-
-3. **Zero-cost safety**: ownership and borrowing eliminate garbage collection. Refinement types are verified at compile time where possible, with optional runtime checks. The type system catches errors that would otherwise require tests.
-
----
-
-## 4.2 Primitive Types
+## 4.1 Primitive Types
 
 Monel provides the following built-in primitive types:
 
@@ -41,7 +25,7 @@ Monel provides the following built-in primitive types:
 | `Unit`   | Zero-sized type, single value `()` | 0-bit     | `()`          |
 | `Never`  | Uninhabited type, no values exist  | 0-bit     | N/A           |
 
-### 4.2.1 `Int` and `UInt`
+### 4.1.1 `Int` and `UInt`
 
 `Int` is the default integer type. Integer literals without a suffix are inferred as `Int`. Suffixes select specific widths:
 
@@ -53,7 +37,7 @@ let z = 42u8        // UInt8
 
 Arithmetic on fixed-width integers checks for overflow in debug builds and wraps in release builds. The `wrapping_*`, `checked_*`, and `saturating_*` method families provide explicit control.
 
-### 4.2.2 `Float` and `Float32`
+### 4.1.2 `Float` and `Float32`
 
 `Float` is the default floating-point type. Numeric literals containing a decimal point are inferred as `Float`. The suffix `f32` selects `Float32`:
 
@@ -62,7 +46,7 @@ let x = 3.14        // Float
 let y = 3.14f32     // Float32
 ```
 
-### 4.2.3 `String`
+### 4.1.3 `String`
 
 `String` is an owned, growable, UTF-8 encoded string. String slices are represented by `&String` (a borrowed reference to a `String`). Raw string literals use `r"..."` or `r#"..."#` syntax for strings containing quotes.
 
@@ -71,7 +55,7 @@ let s = "hello"
 let raw = r#"she said "hi""#
 ```
 
-### 4.2.4 `Unit` and `Never`
+### 4.1.4 `Unit` and `Never`
 
 `Unit` is the type of expressions that produce no meaningful value. Functions that return nothing implicitly return `Unit`. The single value of `Unit` is written `()`.
 
@@ -87,9 +71,9 @@ let x: Int = if condition then 42 else exit(1)  // exit returns Never, coerces t
 
 ---
 
-## 4.3 Composite Types
+## 4.2 Composite Types
 
-### 4.3.1 Tuples
+### 4.2.1 Tuples
 
 Tuples are fixed-size, heterogeneous ordered collections:
 
@@ -101,7 +85,7 @@ let (name, age) = record      // destructuring
 
 Tuples support indexing with `.0`, `.1`, etc. The unit type `Unit` is the zero-element tuple `()`.
 
-### 4.3.2 Arrays
+### 4.2.2 Arrays
 
 `Array<T>` is a fixed-size, stack-allocated sequence of elements of type `T`. The size is part of the type when used with const generics:
 
@@ -110,7 +94,7 @@ let a: Array<Int> = [1, 2, 3, 4, 5]
 let b: Array<Int, 5> = [1, 2, 3, 4, 5]   // with const generic size
 ```
 
-### 4.3.3 Vec
+### 4.2.3 Vec
 
 `Vec<T>` is a growable, heap-allocated sequence:
 
@@ -119,7 +103,7 @@ let v: Vec<Int> = [1, 2, 3]
 v.push(4)
 ```
 
-### 4.3.4 Map and Set
+### 4.2.4 Map and Set
 
 `Map<K, V>` is an ordered hash map. `Set<T>` is an ordered hash set. Keys must implement the `Hash + Eq` traits:
 
@@ -128,7 +112,7 @@ let users: Map<String, User> = {}
 let tags: Set<String> = {"alpha", "beta"}
 ```
 
-### 4.3.5 Option and Result
+### 4.2.5 Option and Result
 
 `Option<T>` represents a value that may be absent:
 
@@ -150,9 +134,9 @@ Both are fundamental to error handling (see Chapter 7). The `?` operator propaga
 
 ---
 
-## 4.4 Pointer Types
+## 4.3 Pointer Types
 
-### 4.4.1 References
+### 4.3.1 References
 
 References are the primary way to borrow data without taking ownership:
 
@@ -163,7 +147,7 @@ References are the primary way to borrow data without taking ownership:
 
 References are always valid. They cannot be null and cannot dangle. The borrow checker (Section 4.10) enforces these guarantees.
 
-### 4.4.2 Raw Pointers
+### 4.3.2 Raw Pointers
 
 `Ptr<T>` and `MutPtr<T>` are raw pointer types for unsafe, low-level operations:
 
@@ -190,11 +174,11 @@ fn read_hardware_register(addr: UInt64) -> UInt32
 
 ---
 
-## 4.5 Structural Typing
+## 4.4 Structural Typing
 
 Monel uses structural typing by default. Two types are compatible if they have the same structure: the same fields with the same types, in the same order.
 
-### 4.5.1 Struct Declarations
+### 4.4.1 Struct Declarations
 
 ```
 struct Point
@@ -208,7 +192,7 @@ struct Coordinate
 
 `Point` and `Coordinate` are structurally equivalent. A value of type `Point` can be used wherever `Coordinate` is expected, and vice versa.
 
-### 4.5.2 Structural Subtyping
+### 4.4.2 Structural Subtyping
 
 A struct `A` is a structural subtype of struct `B` if `A` has all the fields of `B` (with matching types), possibly with additional fields. Subtyping applies when passing arguments or assigning to variables with a wider type:
 
@@ -225,7 +209,7 @@ let p = Point3D { x: 1.0, y: 2.0, z: 3.0 }
 distance_2d(p)  // OK: Point3D is a structural subtype of Point
 ```
 
-### 4.5.3 Structural Subtyping Rules
+### 4.4.3 Structural Subtyping Rules
 
 The subtyping relation `A <: B` holds when:
 
@@ -239,7 +223,7 @@ Function types are contravariant in parameter types and covariant in return type
 //   (B) -> A  <:  (A) -> B    // contravariant params, covariant return
 ```
 
-### 4.5.4 When Structural Typing Applies
+### 4.4.4 When Structural Typing Applies
 
 Structural compatibility is checked:
 - At function call sites (argument passing)
@@ -254,7 +238,7 @@ Structural typing does NOT apply:
 
 ---
 
-## 4.6 Nominal Typing with `distinct type`
+## 4.5 Nominal Typing with `distinct type`
 
 When accidental substitution of structurally-identical types would be a bug, use `distinct type` to create a nominal wrapper:
 
@@ -273,7 +257,7 @@ get_user(oid)   // COMPILE ERROR: OrderId is not UserId
 get_user(42)    // COMPILE ERROR: Int is not UserId
 ```
 
-### 4.6.1 Properties of Distinct Types
+### 4.5.1 Properties of Distinct Types
 
 - A `distinct type` creates a new nominal type that is NOT structurally equivalent to its underlying type.
 - Explicit conversion is required: `UserId(42)` to wrap, `uid.value` to unwrap.
@@ -287,7 +271,7 @@ type Celsius = distinct Float
 
 Without `derives`, no operations from the underlying type are available.
 
-### 4.6.2 Distinct Struct Types
+### 4.5.2 Distinct Struct Types
 
 Structs can also be declared as distinct:
 
@@ -303,13 +287,13 @@ struct Point
 // Velocity and Point are NOT interchangeable despite identical fields
 ```
 
-### 4.6.3 Rationale
+### 4.5.3 Rationale
 
 Domain-specific types like `Port`, `UserId`, `Email` should not be accidentally mixed with raw `Int` or `String` values. The `distinct` modifier enforces this. The compiler verifies that types declared as semantically distinct use `type X = distinct Y`.
 
 ---
 
-## 4.7 Type Aliases
+## 4.6 Type Aliases
 
 A type alias introduces a new name for an existing type without creating a distinct type. Aliases are fully interchangeable with their target:
 
@@ -323,9 +307,9 @@ Aliases are expanded during compilation. They exist purely for readability and d
 
 ---
 
-## 4.8 Algebraic Data Types
+## 4.7 Algebraic Data Types
 
-### 4.8.1 Enums
+### 4.7.1 Enums
 
 Enums define a type that is one of several variants, using `|` to separate each variant:
 
@@ -358,7 +342,7 @@ fn area(s: Shape) -> Float
       (s * (s - a) * (s - b) * (s - c)).sqrt()
 ```
 
-### 4.8.2 Enums with Constraints
+### 4.7.2 Enums with Constraints
 
 Enum variants can carry contracts that are enforced by the compiler:
 
@@ -378,7 +362,7 @@ type Shape
 
 These constraints become compile-time proof obligations when preconditions are statically provable. Otherwise, they generate runtime validation in constructors.
 
-### 4.8.3 Recursive Enums
+### 4.7.3 Recursive Enums
 
 Enums may be recursive. Recursive variants must be behind a pointer (typically `Box<T>`):
 
@@ -391,11 +375,11 @@ type Expr
 
 ---
 
-## 4.9 Refinement Types
+## 4.8 Refinement Types
 
 Refinement types allow constraining a type's values with a predicate. They are declared as contracts and enforced according to the verification tier.
 
-### 4.9.1 Syntax
+### 4.8.1 Syntax
 
 ```
 type Port = Int where value >= 1 and value <= 65535
@@ -407,7 +391,7 @@ type SortedVec<T: Ord> = Vec<T> where value.is_sorted()
 
 The keyword `value` refers to the value being constrained. The `where` clause contains a boolean expression over `value` and its methods.
 
-### 4.9.2 Compound Refinements
+### 4.8.2 Compound Refinements
 
 Refinement predicates support `and`, `or`, `not`, comparisons, arithmetic, method calls on the value, and quantifiers:
 
@@ -421,7 +405,7 @@ type Matrix<T, const R: UInt, const C: UInt> = Array<Array<T, C>, R>
   where R > 0 and C > 0
 ```
 
-### 4.9.3 Verification Tiers
+### 4.8.3 Verification Tiers
 
 Refinement types are checked differently depending on the verification tier:
 
@@ -431,7 +415,7 @@ Refinement types are checked differently depending on the verification tier:
 | With `requires`/`ensures` contracts | Refinement predicates are discharged as SMT proof obligations. The compiler generates Z3 queries to prove that the predicate holds for all possible inputs at the construction site. If the solver cannot prove it, compilation fails with a diagnostic. |
 | With `--smt-timeout` | Same as above, but the solver is given a time budget. Unresolved obligations are reported as warnings, not errors. |
 
-### 4.9.4 Refinement Propagation
+### 4.8.4 Refinement Propagation
 
 When a function accepts a refined type, the refinement is assumed to hold within the function body. When a function returns a refined type, the compiler must verify the refinement at the return site:
 
@@ -448,13 +432,13 @@ fn bad_next_port(p: Port) -> Port
   p + 1      // ERROR: cannot prove p + 1 <= 65535
 ```
 
-### 4.9.5 Refinement Subtyping
+### 4.8.5 Refinement Subtyping
 
 A refined type `T where P` is a subtype of `T`. A value of type `Port` can be used wherever `Int` is expected. The reverse is not true; assigning an `Int` to a `Port` requires a runtime check or a proof.
 
 A refined type `T where P1 and P2` is a subtype of `T where P1`. More restrictive refinements are subtypes of less restrictive ones.
 
-### 4.9.6 Refinement Types as Contracts
+### 4.8.6 Refinement Types as Contracts
 
 Refinement types express domain constraints directly in the type definition:
 
@@ -470,11 +454,11 @@ The compiler verifies that the parameter type for `port` is `Port` (or a type wi
 
 ---
 
-## 4.10 Ownership and Borrowing
+## 4.9 Ownership and Borrowing
 
 Monel uses an ownership and borrowing system inspired by Rust. The key difference is that **lifetime annotations are always inferred**. Programmers never write explicit lifetime parameters.
 
-### 4.10.1 Ownership Rules
+### 4.9.1 Ownership Rules
 
 1. Every value has exactly one owner.
 2. When the owner goes out of scope, the value is dropped (its destructor runs, and its memory is freed).
@@ -487,7 +471,7 @@ let s2 = s1                    // s1 is moved to s2; s1 is no longer valid
 println(s2)                    // OK
 ```
 
-### 4.10.2 Copy Types
+### 4.9.2 Copy Types
 
 Types that implement the `Copy` trait are copied instead of moved. All primitive types (`Int`, `Float`, `Bool`, `Byte`, `Char`, `Unit`) are `Copy`. Structs and enums composed entirely of `Copy` fields can derive `Copy`:
 
@@ -498,7 +482,7 @@ struct Point
   derives: [Copy]
 ```
 
-### 4.10.3 Borrowing Rules
+### 4.9.3 Borrowing Rules
 
 References allow borrowing a value without taking ownership:
 
@@ -517,7 +501,7 @@ fn append(data: &mut Vec<Int>, value: Int)
   data.push(value)
 ```
 
-### 4.10.4 Lifetime Inference
+### 4.9.4 Lifetime Inference
 
 Unlike Rust, Monel does not expose lifetime parameters in function signatures. The compiler infers lifetimes using the following rules:
 
@@ -549,7 +533,7 @@ fn longest(a: &String as 'x, b: &String as 'y) -> &String as 'x | 'y
 
 This syntax is intentionally rare and only needed when automatic inference fails. The `as 'name` annotation is a hint, not a lifetime parameter in the Rust sense. It guides the inference algorithm.
 
-### 4.10.5 Move Semantics
+### 4.9.5 Move Semantics
 
 Non-`Copy` types are moved by default:
 
@@ -570,7 +554,7 @@ consume(greeting.clone())
 // greeting is still valid here
 ```
 
-### 4.10.6 Drop and Destructors
+### 4.9.6 Drop and Destructors
 
 Types can implement the `Drop` trait to run cleanup code when they go out of scope:
 
@@ -584,9 +568,9 @@ Drop order is deterministic: fields are dropped in declaration order, local vari
 
 ---
 
-## 4.11 Generics
+## 4.10 Generics
 
-### 4.11.1 Generic Functions
+### 4.10.1 Generic Functions
 
 Functions can be parameterized over types:
 
@@ -598,7 +582,7 @@ fn swap<A, B>(pair: (A, B)) -> (B, A)
   (pair.1, pair.0)
 ```
 
-### 4.11.2 Generic Structs and Enums
+### 4.10.2 Generic Structs and Enums
 
 ```
 struct Pair<A, B>
@@ -610,7 +594,7 @@ type Tree<T>
   | Branch(Box<Tree<T>>, Box<Tree<T>>)
 ```
 
-### 4.11.3 Trait Bounds
+### 4.10.3 Trait Bounds
 
 Generic type parameters can be constrained with trait bounds:
 
@@ -639,7 +623,7 @@ fn merge<K, V>(a: Map<K, V>, b: Map<K, V>) -> Map<K, V>
   // ...
 ```
 
-### 4.11.4 Const Generics
+### 4.10.4 Const Generics
 
 Type parameters can be compile-time constant values:
 
@@ -670,15 +654,15 @@ fn multiply<T: Mul + Add + Default, const M: UInt, const N: UInt, const P: UInt>
   // ...
 ```
 
-### 4.11.5 Monomorphization
+### 4.10.5 Monomorphization
 
 Generics are monomorphized at compile time. Each concrete instantiation of a generic function or type produces specialized code. There is no runtime dispatch cost for generics.
 
 ---
 
-## 4.12 Traits
+## 4.11 Traits
 
-### 4.12.1 Trait Declaration
+### 4.11.1 Trait Declaration
 
 A trait defines a set of methods that a type must implement:
 
@@ -691,7 +675,7 @@ trait Serializable
   fn deserialize(data: &Vec<Byte>) -> Result<Self, DeserializeError>
 ```
 
-### 4.12.2 Default Methods
+### 4.11.2 Default Methods
 
 Traits can provide default implementations:
 
@@ -703,7 +687,7 @@ trait Describable
     "A " + self.name()
 ```
 
-### 4.12.3 Trait Implementation
+### 4.11.3 Trait Implementation
 
 ```
 impl Printable for Point
@@ -715,7 +699,7 @@ impl Printable for Circle
     "Circle(r={self.radius})"
 ```
 
-### 4.12.4 Trait Inheritance
+### 4.11.4 Trait Inheritance
 
 Traits can extend other traits:
 
@@ -726,7 +710,7 @@ trait Ordered: Eq
 
 A type implementing `Ordered` must also implement `Eq`.
 
-### 4.12.5 Associated Types
+### 4.11.5 Associated Types
 
 Traits can declare associated types:
 
@@ -747,11 +731,11 @@ impl Iterator for Counter
       None
 ```
 
-### 4.12.6 Orphan Rule
+### 4.11.6 Orphan Rule
 
 A trait can be implemented for a type only if either the trait or the type is defined in the current module. This prevents conflicting implementations from different crates.
 
-### 4.12.7 Dynamic Dispatch
+### 4.11.7 Dynamic Dispatch
 
 When the concrete type is not known at compile time, trait objects provide dynamic dispatch:
 
@@ -765,9 +749,9 @@ Trait objects use `&dyn Trait` or `Box<dyn Trait>`. Only object-safe traits can 
 
 ---
 
-## 4.13 Type Inference
+## 4.12 Type Inference
 
-### 4.13.1 Inference Scope
+### 4.12.1 Inference Scope
 
 Monel requires explicit type annotations at module boundaries and infers types within function bodies:
 
@@ -786,7 +770,7 @@ Monel requires explicit type annotations at module boundaries and infers types w
 - Generic type arguments at call sites
 - Intermediate expression types
 
-### 4.13.2 Inference Algorithm
+### 4.12.2 Inference Algorithm
 
 The compiler uses bidirectional type checking with local constraint solving:
 
@@ -796,7 +780,7 @@ The compiler uses bidirectional type checking with local constraint solving:
 
 Type inference never crosses function boundaries. Each function is checked independently using only the signatures of called functions, not their bodies.
 
-### 4.13.3 Inference Failures
+### 4.12.3 Inference Failures
 
 When inference fails, the compiler reports an error with a suggestion to add an annotation:
 
@@ -805,7 +789,7 @@ let items = []   // ERROR: cannot infer element type for empty collection
                  // SUGGESTION: let items: Vec<Int> = []
 ```
 
-### 4.13.4 Numeric Literal Inference
+### 4.12.4 Numeric Literal Inference
 
 Unsuffixed integer literals default to `Int`. Unsuffixed float literals default to `Float`. When the expected type is known, literals adopt that type:
 
@@ -817,9 +801,9 @@ let z: Float32 = 3.14     // Float32
 
 ---
 
-## 4.14 Type Coercions and Conversions
+## 4.13 Type Coercions and Conversions
 
-### 4.14.1 Implicit Coercions
+### 4.13.1 Implicit Coercions
 
 Monel performs a small set of implicit coercions:
 
@@ -836,7 +820,7 @@ No other implicit coercions exist. In particular:
 - No implicit `String` conversions.
 - No implicit truth-value coercions (`Int` does not coerce to `Bool`).
 
-### 4.14.2 Explicit Conversions
+### 4.13.2 Explicit Conversions
 
 The `as` keyword performs explicit conversions between numeric types:
 
@@ -853,7 +837,7 @@ let x: Int = 256
 let y: Result<UInt8, OverflowError> = x.try_into()
 ```
 
-### 4.14.3 The `From` and `Into` Traits
+### 4.13.3 The `From` and `Into` Traits
 
 Infallible conversions implement `From<T>`:
 
@@ -873,7 +857,7 @@ fn process(id: impl Into<UserId>)
 
 ---
 
-## 4.15 Const Evaluation
+## 4.14 Const Evaluation
 
 Expressions marked `const` are evaluated at compile time:
 
@@ -887,7 +871,7 @@ const fn factorial(n: Int) -> Int
 const FACT_10: Int = factorial(10)
 ```
 
-### 4.15.1 What Can Be `const`
+### 4.14.1 What Can Be `const`
 
 - Arithmetic and logical operations on primitives
 - `const fn` calls
@@ -896,7 +880,7 @@ const FACT_10: Int = factorial(10)
 - Pattern matching on const values
 - `if`/`else` with const conditions
 
-### 4.15.2 What Cannot Be `const`
+### 4.14.2 What Cannot Be `const`
 
 - Heap allocation
 - Any effectful operation
@@ -905,11 +889,11 @@ const FACT_10: Int = factorial(10)
 
 ---
 
-## 4.16 Type Contracts and Verification
+## 4.15 Type Contracts and Verification
 
 Types can carry contracts (refinements, field declarations) that the compiler verifies against the implementation.
 
-### 4.16.1 Type Declarations with Contracts
+### 4.15.1 Type Declarations with Contracts
 
 In `.mn` files, types are declared with optional documentation and constraints:
 
@@ -925,7 +909,7 @@ struct UserProfile
   created_at: Timestamp
 ```
 
-### 4.16.2 Compiler Verification Rules
+### 4.15.2 Compiler Verification Rules
 
 The compiler verifies:
 
@@ -937,7 +921,7 @@ The compiler verifies:
 
 ---
 
-## 4.17 Summary of Typing Rules
+## 4.16 Summary of Typing Rules
 
 | Rule | Description |
 |------|-------------|
@@ -955,7 +939,7 @@ The compiler verifies:
 
 ---
 
-## 4.18 Grammar (Informative)
+## 4.17 Grammar (Informative)
 
 The following grammar fragments describe type syntax. See Appendix A for the complete grammar.
 
