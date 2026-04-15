@@ -13,6 +13,7 @@ All spec and documentation text must use a neutral, technical tone:
 - Don't repeat what context already says (title says "Specification" — body doesn't restate it)
 - Test: would a skeptical senior engineer roll their eyes? If yes, rewrite as plain fact.
 - No emdashes in spec or documentation. Use colons, periods, commas, or parentheses instead.
+- No defensive or paranoid language. Don't state the absence of things (e.g., "no LLM in the pipeline", "all verification is deterministic") — compilers are deterministic by default, and calling out what's *not* in the system signals insecurity. Just describe what the system does.
 
 ## Code Style
 

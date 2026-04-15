@@ -1,6 +1,6 @@
 # 6. Verification
 
-The compiler verifies that every function's implementation satisfies its declared `requires:`, `ensures:`, `effects:`, `invariant:`, and `panics: never` contracts. All verification is deterministic and reproducible, with no LLM in the pipeline.
+The compiler verifies that every function's implementation satisfies its declared `requires:`, `ensures:`, `effects:`, `invariant:`, and `panics: never` contracts.
 
 ```mermaid
 graph LR

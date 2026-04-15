@@ -39,7 +39,7 @@ graph LR
 - **Implementation**: algorithms, data structures, control flow
 - **Verification**: type checking, effect inference, SMT contract proof (Z3), borrow checking
 
-An implementation that violates its contracts is a compile error. A declared effect absent from the code is a warning. An undeclared effect in the code is an error. All verification is deterministic; no LLM in the pipeline.
+An implementation that violates its contracts is a compile error. A declared effect absent from the code is a warning. An undeclared effect in the code is an error.
 
 Performance target: parity with Rust (zero-cost abstractions, no GC). Ergonomics target: parity with Python (minimal boilerplate, type inference within functions, indentation-based scope). Targets: native via LLVM/Cranelift, WebAssembly.
 
@@ -103,4 +103,3 @@ The following hold for every valid Monel project:
 6. All `panics: never` functions are proven panic-free.
 7. All refinement type assignments satisfy their predicates.
 8. The compiler produces identical output for identical input.
-9. The compiler produces correct output without any LLM.

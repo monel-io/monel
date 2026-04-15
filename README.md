@@ -15,7 +15,7 @@ fn push(self: mut Stack<T>, value: T)
   self.len += 1
 ```
 
-Every function declares what it requires, guarantees, and which side effects it performs. The compiler checks all of it deterministically — no LLM in the compilation pipeline.
+Every function declares what it requires, guarantees, and which side effects it performs. The compiler checks all of it.
 
 ## Status: Early Research (31% of claims proven)
 

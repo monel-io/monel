@@ -1808,7 +1808,7 @@ Each `ensures:` clause becomes a separate test. Conditional postconditions (`ok 
 4. Type invariants generate additional tests verifying the invariant holds after every public method.
 5. Generated tests are written to `.mn.test` files and committed to the repository.
 
-**Generated tests are deterministic artifacts.** Once generated, they run without any LLM or external tool. They can be reviewed, modified, and versioned like any other code.
+Generated tests are committed to the repository and can be reviewed, modified, and versioned like any other code.
 
 **Relationship to SMT verification:**
 
@@ -1843,7 +1843,7 @@ monel test --gen-llm-tests src/auth.mn
   Review with: monel diff src/auth.mn.test
 ```
 
-**The LLM is in the authoring loop, not the verification loop.** Once generated and committed, the tests run deterministically on every build. The LLM is never invoked during `monel build` or `monel test`. If the LLM generates a bad test, the developer deletes it. If it generates a good test, it becomes a permanent regression guard.
+Generated tests are ordinary code: if the LLM produces a bad test, delete it; if it produces a good one, commit it as a regression guard.
 
 **Pipeline summary:**
 
@@ -1854,7 +1854,7 @@ Contracts (in .mn files)
   ├── Contract-driven prop tests ── validates empirically (test time)
   └── LLM-generated tests ───────── catches what contracts miss (authored once, runs forever)
         │
-        └── saved to .mn.test (deterministic, committed, reviewed)
+        └── saved to .mn.test (committed, reviewed)
 ```
 
 ### 12.19.6 Test Fixtures

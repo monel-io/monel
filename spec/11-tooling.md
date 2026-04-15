@@ -603,7 +603,7 @@ monel check --effects                 # only effect checking
 | 3. Effects | `--effects` | Effect checking and propagation | < 20ms |
 | 4. Safety | `--safety` | Borrow checking, lifetime analysis | < 50ms |
 
-Parity verification (`--parity`) checks contract/implementation correspondence deterministically: signature matching, effect coverage, contract syntax, and `requires:`/`ensures:` clauses via SMT. It runs as part of `monel check` but is not a numbered pipeline stage. No LLM is involved in the build pipeline.
+Parity verification (`--parity`) checks contract/implementation correspondence: signature matching, effect coverage, contract syntax, and `requires:`/`ensures:` clauses via SMT. It runs as part of `monel check` but is not a numbered pipeline stage.
 
 ### 11.5.3 Check Output
 
@@ -782,7 +782,7 @@ monel generate src/handler.mn                        # all unimplemented contrac
 
 The generated implementation:
 - Satisfies the contract's type signature and effect declarations.
-- Passes parity verification (deterministic checks).
+- Passes parity verification.
 - Is written into the same `.mn` file.
 - Requires human review before committing.
 
@@ -958,7 +958,7 @@ monel dev --no-overlay             # disable error overlay
 ```
 
 On file change, the dev server:
-1. **Incrementally rebuilds**: only recompiles changed functions and their transitive dependents. Target: sub-100ms for deterministic checks.
+1. **Incrementally rebuilds**: only recompiles changed functions and their transitive dependents. Target: sub-100ms.
 2. **Runs parity checks**: verifies that changed implementations still match their contracts.
 3. **Hot-swaps safe functions**: replaces function implementations in the running program without restart (see below).
 4. **Updates error overlay**: displays errors in a terminal overlay or LSP diagnostics.

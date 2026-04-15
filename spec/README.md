@@ -2,7 +2,7 @@
 
 **Version:** 0.2.0-draft
 
-Functions in Monel declare contracts (`requires:`, `ensures:`, `effects:`, `panics:`) alongside their implementation in `.mn` files. The compiler verifies all contracts deterministically. See [how verification works](06-parity.md).
+Functions in Monel declare contracts (`requires:`, `ensures:`, `effects:`, `panics:`) alongside their implementation in `.mn` files. The compiler verifies all contracts. See [how verification works](06-parity.md).
 
 - **Contracts**: `requires:`, `ensures:`, `invariant:`, `effects:`, `panics: never`
 - **Implementation**: algorithms, data structures, control flow
