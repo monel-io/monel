@@ -1,8 +1,6 @@
 # 12. Standard Library
 
-This chapter specifies the Monel standard library. The standard library is provided as modules. No types or functions are language primitives (except the syntax for literals, control flow, and the effect system, which are specified in earlier chapters). All standard library modules are self-hosting: they are written in Monel with their own contracts, subject to the same parity verification as user code.
-
----
+Standard library modules are written in Monel with their own contracts, subject to the same verification as user code.
 
 ## 12.1 Core Types
 

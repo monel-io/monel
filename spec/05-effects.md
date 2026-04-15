@@ -1,9 +1,5 @@
 # 5. Effect System
 
-This chapter specifies how developers declare side effects and how the compiler tracks, verifies, and constrains them.
-
----
-
 ## 5.1 Effect Declarations
 
 ### 5.1.1 Syntax
@@ -34,7 +30,7 @@ fn add(a: Int, b: Int) -> Int
 This is equivalent to writing `effects: [pure]`, though the explicit form is rarely used. Pure functions:
 - Cannot call functions that have effects.
 - Are referentially transparent.
-- Are always safe for hot-swapping.
+- Are safe for hot-swapping.
 - Can be memoized by the compiler.
 - Can be evaluated at compile time if their inputs are const.
 
@@ -55,7 +51,7 @@ effects: [async]             // asynchronous operations
 
 ## 5.2 Built-in Effect Categories
 
-Monel defines the following built-in effect categories. These cover the fundamental classes of side effects that any systems programming language must handle.
+Monel defines the following built-in effect categories.
 
 ### 5.2.1 `pure`
 
@@ -115,7 +111,7 @@ Logging is a separate effect because it is pervasive but has different risk char
 | `Crypto.verify` | Verify digital signatures               |
 | `Crypto.random` | Generate cryptographically secure random numbers |
 
-Crypto effects exist because cryptographic operations are security-critical and auditable. Even though `Crypto.hash` is technically pure, it is tracked as an effect for policy and auditability purposes.
+`Crypto.hash` is tracked as an effect despite being pure, so that policy rules can restrict cryptographic operations.
 
 ### 5.2.7 Authentication and Authorization: `Auth`
 
@@ -210,7 +206,7 @@ track_alloc = true
 | `Time.sleep` | Sleep/delay for a duration        |
 | `Time.timer` | Create or interact with timers    |
 
-Time effects exist because functions that depend on the current time are not pure and are harder to test deterministically.
+Functions that read the current time are not pure; time is tracked as an effect so it can be mocked in tests.
 
 ---
 
@@ -351,11 +347,9 @@ The compiler issues a warning (not an error) for declared-but-unused effects, si
 
 ### 5.4.5 Standard I/O Exception
 
-`println`, `eprintln`, `print`, and `eprint` are special: they write to stdout/stderr but do not require an effect declaration. This exception exists because:
-- Debug printing should not require effect annotations during development.
-- Production code should use `Log.write` instead; linters can enforce this.
+`println`, `eprintln`, `print`, and `eprint` write to stdout/stderr without an effect declaration. Production code should use `Log.write` instead; linters can enforce this.
 
-This exception can be disabled project-wide:
+The exception can be disabled project-wide:
 
 ```toml
 # monel.project

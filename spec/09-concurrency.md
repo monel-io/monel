@@ -192,7 +192,7 @@ scope.with_limit(32) |s|
 
 ## 9.4 Channels
 
-Channels provide typed, safe communication between concurrent tasks. They are the primary mechanism for passing data between tasks that cannot share references.
+Channels provide typed communication between concurrent tasks that cannot share references.
 
 ### 9.4.1 Channel Types
 
@@ -614,7 +614,7 @@ Cancellation tokens can be passed through the call graph. They are lightweight a
 
 ## 9.10 Event Loop Integration
 
-For interactive applications (terminal emulators, TUI apps, games), Monel provides first-class event loop primitives.
+For interactive applications (terminal emulators, TUI apps, games), Monel provides event loop primitives.
 
 ### 9.10.1 Event Loop
 

@@ -145,7 +145,7 @@ References are the primary way to borrow data without taking ownership:
 | `&T`       | Immutable (shared) reference   |
 | `&mut T`   | Mutable (exclusive) reference  |
 
-References are always valid. They cannot be null and cannot dangle. The borrow checker (Section 4.10) enforces these guarantees.
+References cannot be null and cannot dangle. The borrow checker (Section 4.10) enforces this.
 
 ### 4.3.2 Raw Pointers
 
@@ -531,7 +531,7 @@ fn longest(a: &String as 'x, b: &String as 'y) -> &String as 'x | 'y
   if a.len() >= b.len() then a else b
 ```
 
-This syntax is intentionally rare and only needed when automatic inference fails. The `as 'name` annotation is a hint, not a lifetime parameter in the Rust sense. It guides the inference algorithm.
+The `as 'name` annotation is a hint to the inference algorithm, used when automatic inference fails. It is not a lifetime parameter.
 
 ### 4.9.5 Move Semantics
 

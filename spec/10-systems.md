@@ -2,7 +2,7 @@
 
 ## 10.1 The `unsafe` Effect
 
-`unsafe` is a first-class effect in Monel's effect system. Any operation that bypasses the language's safety guarantees (raw pointer access, FFI calls, inline assembly, unchecked casts) requires the `unsafe` effect.
+Operations that bypass the language's safety guarantees (raw pointer access, FFI calls, inline assembly, unchecked casts) require the `unsafe` effect.
 
 ```mermaid
 graph LR
@@ -40,7 +40,7 @@ When a function declares `with unsafe`, the `unsafe` effect propagates through t
 
 ### 10.1.2 Unsafe Blocks
 
-An `unsafe` block **discharges** the `unsafe` effect locally, allowing unsafe operations at a specific point in otherwise-safe code. This is the primary mechanism for containing unsafe operations:
+An `unsafe` block **discharges** the `unsafe` effect locally, allowing unsafe operations at a specific point in otherwise-safe code:
 
 ```
 fn init_buffer(size: Int) -> Buffer

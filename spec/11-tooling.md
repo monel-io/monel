@@ -44,7 +44,7 @@ All query commands support the `--format` flag:
 | Compact | `--format compact` | Condensed text, no decoration |
 | LLM | `--format llm` | Maximum information-per-token, tuned for LLM context windows |
 
-The `llm` format is specifically designed to maximize semantic density within a token budget:
+The `llm` format maximizes semantic density within a token budget:
 - No blank lines or decorative separators.
 - Abbreviated keywords (`fn` not `function`, `T` not `Type`).
 - Omits information recoverable from context (e.g., module name when already scoped).
@@ -272,7 +272,7 @@ monel query blast --changed --format json
 monel query blast --changed --since <commit>
 ```
 
-This is the single most valuable command for AI coding tools. Before making changes, an LLM can assess impact; after making changes, it can verify the blast radius is acceptable.
+Before making changes, an LLM can use this to assess impact; after making changes, to verify the blast radius.
 
 ### 11.1.5 Semantic Search
 
@@ -369,7 +369,7 @@ The `--budget` flag causes the context gatherer to prioritize files by relevance
 
 ## 11.3 Edit-Compatible Compiler Errors
 
-Every compiler error includes machine-actionable fix suggestions. This enables AI tools to apply fixes directly without parsing human-readable error messages.
+Every compiler error includes machine-actionable fix suggestions that tools can apply directly.
 
 ### 11.3.1 Error Format
 
@@ -970,7 +970,7 @@ The dev server can hot-swap individual functions in a running program. Hot-swap 
 
 | Effect Category | Hot-Swap | Reason |
 |----------------|----------|--------|
-| Pure (no effects) | Automatic | No side effects, always safe |
+| Pure (no effects) | Automatic | No side effects |
 | Read-only effects (`Db.read`, `Fs.read`) | Automatic | No state mutation |
 | Write effects (`Db.write`, `Fs.write`) | Confirmed | May affect persisted state |
 | `unsafe` | Confirmed + invariant check | Safety invariants may change |

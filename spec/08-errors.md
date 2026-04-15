@@ -300,7 +300,7 @@ When a `panic` is reached:
 3. In structured concurrency, sibling tasks are cancelled.
 4. The process exits with a non-zero status code.
 
-Panics do not unwind. There is no `catch` for panics. Resources are cleaned up via the runtime's structured concurrency guarantees (parent scopes outlive child scopes, so resource owners are always valid).
+Panics do not unwind. Resources are cleaned up via structured concurrency: parent scopes outlive child scopes, so resource owners remain valid.
 
 ### 8.5.3 `panics: never`
 

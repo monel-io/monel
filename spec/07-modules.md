@@ -351,7 +351,7 @@ Tools are project-scoped. `monel sync` installs them into `.monel/tools/` relati
     cargo-flamegraph # v0.6 (dev-only)
 ```
 
-The `.monel/tools/` directory SHOULD be added to `.gitignore`. It is fully reproducible from `monel.lock`.
+The `.monel/tools/` directory SHOULD be added to `.gitignore`. It can be reconstructed from `monel.lock`.
 
 #### Binary Resolution Strategy
 
@@ -403,7 +403,7 @@ If the tool is not installed, `monel run` prints an error directing the user to 
 - Dev dependencies (`[dev-dependencies]`).
 - Tool binaries (`[tools]` and `[tools.dev]`).
 
-A single lockfile ensures fully reproducible builds and environments. See Section 7.10.1 for the lockfile lifecycle.
+A single lockfile produces reproducible builds and environments. See Section 7.10.1 for the lockfile lifecycle.
 
 ### 7.6.5 `[targets]` Section
 
